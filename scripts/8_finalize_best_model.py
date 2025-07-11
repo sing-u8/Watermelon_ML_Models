@@ -69,8 +69,13 @@ def load_best_model_and_features() -> tuple:
     if not selected_features_file.exists():
         raise FileNotFoundError(f"특징 권장 파일을 찾을 수 없습니다: {selected_features_file}")
     
-    with open(selected_features_file, 'r', encoding='utf-8') as f:
-        feature_recommendations = yaml.safe_load(f)
+    try:
+        with open(selected_features_file, 'r', encoding='utf-8') as f:
+            feature_recommendations = yaml.safe_load(f)
+    except yaml.constructor.ConstructorError:
+        logger.warning("특징 권장 파일에 numpy 객체가 포함되어 있어 unsafe_load를 사용합니다.")
+        with open(selected_features_file, 'r', encoding='utf-8') as f:
+            feature_recommendations = yaml.unsafe_load(f)
     
     # Use progressive_selection features (best overall)
     selected_features = feature_recommendations['best_overall']['features']
@@ -131,7 +136,7 @@ def train_final_model(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarra
     return final_model, scaler
 
 
-def evaluate_final_model(model, scaler, X_test: np.ndarray, y_test: np.ndarray) -> dict:
+def evaluate_final_model(model, scaler, X_test: np.ndarray, y_test: np.ndarray) -> tuple:
     """Evaluate the final model on test set."""
     logger = logging.getLogger(__name__)
     logger.info("=== 최종 모델 성능 평가 ===")

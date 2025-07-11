@@ -81,7 +81,7 @@ def load_data():
     
     logger.info("데이터 스케일링 완료")
     logger.info(f"특징 수: {X_train_scaled.shape[1]}")
-    logger.info(f"당도 범위: {np.min(y_train):.2f} ~ {np.max(y_train):.2f} Brix")
+    logger.info(f"당도 범위: {float(np.array(y_train).min()):.2f} ~ {float(np.array(y_train).max()):.2f} Brix")
     
     return {
         'X_train': X_train_scaled,
@@ -208,15 +208,43 @@ def load_baseline_results():
     baseline_path = "models/saved/training_summary_simple.yaml"
     
     if os.path.exists(baseline_path):
-        with open(baseline_path, 'r', encoding='utf-8') as f:
-            baseline_data = yaml.safe_load(f)
+        try:
+            # 먼저 safe_load 시도
+            with open(baseline_path, 'r', encoding='utf-8') as f:
+                baseline_data = yaml.safe_load(f)
+        except yaml.constructor.ConstructorError as e:
+            logger.warning(f"YAML 파일에 numpy 객체가 포함되어 있어 safe_load에 실패했습니다: {e}")
+            try:
+                # unsafe load로 시도 (numpy 객체 포함 파일용)
+                with open(baseline_path, 'r', encoding='utf-8') as f:
+                    baseline_data = yaml.unsafe_load(f)
+                logger.info("unsafe_load로 기본 모델 결과를 성공적으로 로드했습니다.")
+            except Exception as e2:
+                logger.error(f"unsafe_load도 실패했습니다: {e2}")
+                logger.warning("기본 모델 결과 로드를 건너뜁니다.")
+                return {}
+        except Exception as e:
+            logger.error(f"YAML 파일 로드 실패: {e}")
+            logger.warning("기본 모델 결과 로드를 건너뜁니다.")
+            return {}
         
         # 결과 구조 변환
         baseline_results = {}
-        for model_name, metrics in baseline_data.get('test_results', {}).items():
-            baseline_results[model_name] = {'test': metrics}
+        test_performance = baseline_data.get('test_performance', {})
         
-        logger.info("기본 모델 결과 로드 완료")
+        if test_performance:
+            for model_name, metrics in test_performance.items():
+                # numpy 객체를 float로 변환
+                converted_metrics = {}
+                for key, value in metrics.items():
+                    if hasattr(value, 'item'):  # numpy scalar인 경우
+                        converted_metrics[key] = float(value.item())
+                    else:
+                        converted_metrics[key] = float(value)
+                
+                baseline_results[model_name] = {'test': converted_metrics}
+        
+        logger.info(f"기본 모델 결과 로드 완료: {list(baseline_results.keys())}")
         return baseline_results
     else:
         logger.warning("기본 모델 결과를 찾을 수 없습니다.")

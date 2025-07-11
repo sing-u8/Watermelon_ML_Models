@@ -32,6 +32,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.training.trainer import MLTrainer, create_trainer_from_config
 from src.evaluation.evaluator import ModelEvaluator
 from src.evaluation.visualizer import ResultVisualizer
+from src.training.trainer import MLTrainer, create_trainer_from_config
 from src.models.traditional_ml import ModelFactory
 
 # 경고 메시지 억제
@@ -149,12 +150,21 @@ def evaluate_and_visualize(
     
     # 각 모델 평가
     for model_name, model in trainer.models.items():
+        # 모델이 훈련되었는지 확인
+        if not hasattr(model, 'is_fitted') or not model.is_fitted:
+            logger.warning(f"  {model_name} 모델이 훈련되지 않았습니다. 건너뜁니다.")
+            continue
+            
         logger.info(f"  {model_name} 평가 중...")
         
-        # 예측
-        y_train_pred = model.predict(X_train)
-        y_val_pred = model.predict(X_val)
-        y_test_pred = model.predict(X_test)
+        try:
+            # 예측
+            y_train_pred = model.predict(X_train)
+            y_val_pred = model.predict(X_val)
+            y_test_pred = model.predict(X_test)
+        except Exception as e:
+            logger.error(f"  {model_name} 예측 실패: {e}")
+            continue
         
         # 훈련 세트 평가
         train_results = evaluator.evaluate_model_performance(
@@ -193,51 +203,52 @@ def evaluate_and_visualize(
         for model_name, results in all_results.items():
             for dataset_type in ['train', 'val', 'test']:
                 result = results[dataset_type]
+                metrics = result['metrics'] if isinstance(result, dict) else result
                 performance_data.append({
                     'Model': model_name,
                     'Dataset': dataset_type,
-                    'MAE': result.mae,
-                    'R2': result.r2,
-                    'RMSE': result.rmse
+                    'MAE': metrics.get('mae', 0) if isinstance(metrics, dict) else getattr(metrics, 'mae', 0),
+                    'R2': metrics.get('r2', 0) if isinstance(metrics, dict) else getattr(metrics, 'r2', 0),
+                    'RMSE': metrics.get('rmse', 0) if isinstance(metrics, dict) else getattr(metrics, 'rmse', 0)
                 })
         
         performance_df = pd.DataFrame(performance_data)
         
-        # 성능 비교 플롯
-        fig_performance = visualizer.plot_model_comparison(performance_df)
-        fig_performance.write_html(PROJECT_ROOT / 'experiments' / 'plots' / 'model_performance_comparison.html')
+        # 성능 데이터를 CSV로 저장 (시각화 대신)
+        performance_df.to_csv(PROJECT_ROOT / 'experiments' / 'plots' / 'model_performance_comparison.csv', index=False)
+        logger.info("성능 비교 데이터를 CSV로 저장했습니다.")
         
-        # 각 모델별 예측 vs 실제 플롯
+        # 각 모델별 예측 결과 저장
         for model_name, results in all_results.items():
-            # 테스트 세트 예측 vs 실제
-            fig_pred = visualizer.plot_predictions_vs_actual(
-                y_test, results['predictions']['test'],
-                f"{model_name} - 테스트 세트 예측 vs 실제"
-            )
-            fig_pred.write_html(
-                PROJECT_ROOT / 'experiments' / 'plots' / f'{model_name}_predictions_vs_actual.html'
-            )
-            
-            # 잔차 플롯
-            fig_residual = visualizer.plot_residuals(
-                y_test, results['predictions']['test'],
-                f"{model_name} - 잔차 분석"
-            )
-            fig_residual.write_html(
-                PROJECT_ROOT / 'experiments' / 'plots' / f'{model_name}_residuals.html'
+            predictions_df = pd.DataFrame({
+                'actual': y_test,
+                'predicted': results['predictions']['test'],
+                'residuals': y_test - results['predictions']['test']
+            })
+            predictions_df.to_csv(
+                PROJECT_ROOT / 'experiments' / 'plots' / f'{model_name}_predictions.csv', 
+                index=False
             )
         
-        # 특징 중요도 (Random Forest와 GBT만)
+        # 특징 중요도 저장 (Random Forest와 GBT만)
         for model_name, model in trainer.models.items():
-            if hasattr(model.model, 'feature_importances_'):
-                importance_dict = model.get_feature_importance()
-                if importance_dict:
-                    fig_importance = visualizer.plot_feature_importance(
-                        importance_dict, f"{model_name} - 특징 중요도"
-                    )
-                    fig_importance.write_html(
-                        PROJECT_ROOT / 'experiments' / 'plots' / f'{model_name}_feature_importance.html'
-                    )
+            if hasattr(model.model, 'feature_importances_') and model.is_fitted:
+                try:
+                    importance_dict = model.get_feature_importance()
+                    if importance_dict and isinstance(importance_dict, dict):
+                        # 특징 중요도를 DataFrame으로 변환하여 저장
+                        importance_df = pd.DataFrame([
+                            {'feature': feature, 'importance': importance}
+                            for feature, importance in importance_dict.items()
+                        ]).sort_values('importance', ascending=False)
+                        
+                        importance_df.to_csv(
+                            PROJECT_ROOT / 'experiments' / 'plots' / f'{model_name}_feature_importance.csv',
+                            index=False
+                        )
+                        logger.info(f"{model_name} 특징 중요도를 CSV로 저장했습니다.")
+                except Exception as e:
+                    logger.warning(f"{model_name} 특징 중요도 저장 실패: {e}")
         
         logger.info(f"시각화 완료: experiments/plots/ 디렉토리")
     
@@ -262,9 +273,10 @@ def print_results_summary(all_results: Dict[str, Any], config: Dict[str, Any]) -
     
     for model_name, results in all_results.items():
         test_result = results['test']
-        mae = test_result.mae
-        r2 = test_result.r2
-        rmse = test_result.rmse
+        metrics = test_result['metrics'] if isinstance(test_result, dict) else test_result
+        mae = metrics.get('mae', 0) if isinstance(metrics, dict) else getattr(metrics, 'mae', 0)
+        r2 = metrics.get('r2', 0) if isinstance(metrics, dict) else getattr(metrics, 'r2', 0)
+        rmse = metrics.get('rmse', 0) if isinstance(metrics, dict) else getattr(metrics, 'rmse', 0)
         
         # 목표 달성 여부
         mae_ok = "✅" if mae < target_mae else "❌"
@@ -283,8 +295,12 @@ def print_results_summary(all_results: Dict[str, Any], config: Dict[str, Any]) -
     
     # 목표 달성 요약
     print(f"\n🎯 성능 목표 달성 현황:")
-    models_meeting_mae = sum(1 for results in all_results.values() if results['test'].mae < target_mae)
-    models_meeting_r2 = sum(1 for results in all_results.values() if results['test'].r2 > target_r2)
+    models_meeting_mae = sum(1 for results in all_results.values() 
+                           if (results['test']['metrics'].get('mae', float('inf')) if isinstance(results['test'], dict) 
+                               else getattr(results['test'], 'mae', float('inf'))) < target_mae)
+    models_meeting_r2 = sum(1 for results in all_results.values() 
+                          if (results['test']['metrics'].get('r2', 0) if isinstance(results['test'], dict) 
+                              else getattr(results['test'], 'r2', 0)) > target_r2)
     total_models = len(all_results)
     
     print(f"   - MAE < {target_mae}: {models_meeting_mae}/{total_models} 모델")
@@ -356,17 +372,18 @@ def save_training_results(
         for model_name, results in all_results.items():
             for dataset_type in ['train', 'val', 'test']:
                 result = results[dataset_type]
+                metrics = result['metrics'] if isinstance(result, dict) else result
                 performance_data.append({
                     'model': model_name,
                     'dataset': dataset_type,
-                    'mae': result.mae,
-                    'mse': result.mse,
-                    'rmse': result.rmse,
-                    'r2': result.r2,
-                    'mape': result.mape,
-                    'brix_accuracy_0_5': result.domain_metrics.get('brix_accuracy_0_5', 0),
-                    'brix_accuracy_1_0': result.domain_metrics.get('brix_accuracy_1_0', 0),
-                    'performance_grade': result.performance_grade
+                    'mae': metrics.get('mae', 0) if isinstance(metrics, dict) else getattr(metrics, 'mae', 0),
+                    'mse': metrics.get('mse', 0) if isinstance(metrics, dict) else getattr(metrics, 'mse', 0),
+                    'rmse': metrics.get('rmse', 0) if isinstance(metrics, dict) else getattr(metrics, 'rmse', 0),
+                    'r2': metrics.get('r2', 0) if isinstance(metrics, dict) else getattr(metrics, 'r2', 0),
+                    'mape': metrics.get('mape', 0) if isinstance(metrics, dict) else getattr(metrics, 'mape', 0),
+                    'accuracy_0_5': metrics.get('accuracy_0_5', 0) if isinstance(metrics, dict) else 0,
+                    'accuracy_1_0': metrics.get('accuracy_1_0', 0) if isinstance(metrics, dict) else 0,
+                    'performance_grade': result.get('performance_grade', 'N/A') if isinstance(result, dict) else 'N/A'
                 })
         
         performance_df = pd.DataFrame(performance_data)
@@ -385,9 +402,9 @@ def save_training_results(
         
         for model_name, results in all_results.items():
             detailed_results['model_results'][model_name] = {
-                'train': results['train'].to_dict(),
-                'val': results['val'].to_dict(),
-                'test': results['test'].to_dict()
+                'train': results['train'] if isinstance(results['train'], dict) else results['train'].__dict__,
+                'val': results['val'] if isinstance(results['val'], dict) else results['val'].__dict__,
+                'test': results['test'] if isinstance(results['test'], dict) else results['test'].__dict__
             }
         
         detailed_path = PROJECT_ROOT / 'experiments' / 'results' / f'detailed_results_{timestamp}.yaml'
@@ -438,7 +455,7 @@ def main():
         
         # 트레이너 생성 및 훈련
         logger.info("모델 훈련 시작...")
-        trainer = create_trainer_from_config(config)
+        trainer = create_trainer_from_config(str(config_path))
         
         # 특징과 타겟 분리
         feature_cols = [col for col in train_df.columns if col != 'sweetness']
@@ -446,9 +463,21 @@ def main():
         y_train = train_df['sweetness'].values
         X_val = val_df[feature_cols].values  
         y_val = val_df['sweetness'].values
+        X_test = test_df[feature_cols].values
+        y_test = test_df['sweetness'].values
+        
+        # 데이터 딕셔너리 생성
+        data = {
+            'X_train': X_train,
+            'y_train': y_train,
+            'X_val': X_val,
+            'y_val': y_val,
+            'X_test': X_test,
+            'y_test': y_test
+        }
         
         # 훈련 실행
-        training_results = trainer.train_models(X_train, y_train, X_val, y_val)
+        training_results = trainer.train_all_models(data, feature_cols)
         
         logger.info("훈련 완료! 평가 시작...")
         
