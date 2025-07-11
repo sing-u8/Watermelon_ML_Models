@@ -1,0 +1,10 @@
+fundamental_frequency
+mel_spec_median
+spectral_rolloff
+mel_spec_q75
+mel_spec_rms
+mfcc_5
+mfcc_13
+mel_spec_kurtosis
+decay_rate
+mfcc_10

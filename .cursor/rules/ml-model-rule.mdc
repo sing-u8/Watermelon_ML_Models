@@ -1,0 +1,366 @@
+---
+alwaysApply: true
+---
+
+# 🍉 전통적인 ML 모델 기반 수박 당도 예측 프로젝트 규칙서
+
+## 프로젝트 개요
+
+수박 소리 데이터를 활용하여 그래디언트 부스팅 트리(GBT), 서포트 벡터 머신(SVM), 랜덤 포레스트 모델로 당도를 예측하는 머신러닝 프로젝트
+
+### 목표
+
+- 오디오 신호 → 음향 특징 추출 → 전통적인 ML 분류/회귀 파이프라인 구축
+- scikit-learn 기반 GBT, SVM, Random Forest 모델 개발
+- CNN 대비 성능 우위 검증 (목표: MAE < 1.0 Brix)
+- iOS 앱 배포를 위한 모델 변환 (scikit-learn → ONNX → Core ML)
+
+## 기술 스택 & 아키텍처
+
+### Core Technologies
+
+- **Framework**: scikit-learn
+- **Model Types**: GradientBoostingRegressor, SVR, RandomForestRegressor
+- **Audio Processing**: librosa
+- **Data Analysis**: pandas, numpy
+- **Python Version**: Python 3.8+
+
+### 데이터 파이프라인
+
+```
+Audio Files (.wav, .m4a, .mp3)
+    ↓ (librosa)
+Audio Feature Extraction (51개 특징)
+    ↓ (scikit-learn)
+Sweetness Prediction (회귀)
+```
+
+### 모델 저장 파이프라인
+
+```
+Trained Model
+    ↓ (joblib/pickle)
+Model File (.pkl)
+    ↓ (deployment)
+Production Ready Model
+```
+
+### 모델 변환 파이프라인 (iOS 배포용)
+
+```
+scikit-learn Model (.pkl)
+    ↓ (skl2onnx)
+ONNX Model (.onnx)
+    ↓ (coremltools)
+Core ML Model (.mlmodel)
+    ↓ (iOS App)
+Mobile Deployment
+```
+
+## 프로젝트 구조 가이드라인
+
+### 표준 ML 프로젝트 디렉토리 구조
+
+```
+├── src/                    # 소스 코드
+│   ├── data/              # 데이터 처리 모듈
+│   │   ├── audio_loader.py
+│   │   ├── preprocessor.py
+│   │   └── feature_extractor.py
+│   ├── models/            # 모델 클래스
+│   │   ├── traditional_ml.py
+│   │   └── ensemble_model.py
+│   ├── training/          # 훈련 파이프라인
+│   │   ├── trainer.py
+│   │   └── hyperparameter_tuner.py
+│   ├── evaluation/        # 평가 모듈
+│   │   ├── evaluator.py
+│   │   └── visualizer.py
+│   ├── conversion/        # 모델 변환 모듈
+│   │   ├── model_converter.py
+│   │   └── mobile_optimizer.py
+│   └── utils/             # 유틸리티 함수
+├── configs/               # 설정 파일 (YAML)
+├── data/                  # 데이터셋 디렉토리
+│   ├── raw/              # 원본 오디오 파일
+│   ├── processed/        # 전처리된 특징 파일
+│   └── splits/           # 학습/검증/테스트 분할
+├── models/                # 저장된 모델 파일
+│   ├── saved/            # 학습된 모델 (.pkl)
+│   └── mobile/           # 변환된 모바일 모델 (.onnx, .mlmodel)
+├── experiments/           # 실험 결과 및 로그
+├── notebooks/             # Jupyter 노트북
+├── tests/                 # 테스트 코드
+├── scripts/               # 실행 스크립트
+└── requirements.txt       # 패키지 의존성
+```
+
+## 개발 가이드라인
+
+### 코드 품질 규칙
+
+1. **모듈화**: 각 기능별로 독립적인 모듈 구성
+2. **재사용성**: 공통 기능은 utils에 분리
+3. **설정 관리**: YAML 파일로 하이퍼파라미터 및 설정 관리
+4. **타입 힌팅**: Python type hints 적극 활용
+5. **문서화**: docstring 및 주석 필수
+
+### 파일 명명 규칙
+
+- 클래스: `PascalCase` (예: `AudioFeatureExtractor`)
+- 함수/변수: `snake_case` (예: `extract_mfcc_features`)
+- 상수: `UPPER_SNAKE_CASE` (예: `N_MFCC_COEFFS`)
+- 파일: `snake_case.py` (예: `feature_extractor.py`)
+
+### 터미널 실행 규칙
+
+- **프로세스 관리**: Python 스크립트 실행 후 반드시 프로세스 완전 종료 확인
+- **메모리 정리**: `del` 키워드로 대용량 객체 명시적 삭제
+- **가비지 컬렉션**: `gc.collect()` 호출로 메모리 정리
+- **안전한 종료**: `sys.exit(0)` 또는 `os._exit(0)` 사용
+- **리소스 해제**: 파일 핸들, 데이터베이스 연결 등 명시적 close()
+- **예외 처리**: try-finally 블록으로 리소스 해제 보장
+
+## 데이터 처리 규칙
+
+### 데이터 구조 및 조직
+
+- **폴더 명명 규칙**: `xx_yy` 형태
+
+  - `xx`: 수박 샘플번호 (01, 02, 03, ..., 19)
+  - `yy`: 당도값 (8.7 ~ 12.7 Brix)
+  - 예시: `01_10.5`, `15_9.4`, `13_12.7`
+
+- **디렉토리 구조**:
+
+  ```
+  data/raw/
+  ├── xx_yy/               # 각 수박 샘플 폴더
+  │   ├── audios/          # 오디오 파일 저장 폴더
+  │   │   ├── 1.wav        # 개별 오디오 파일들
+  │   │   ├── 2.wav
+  │   │   └── ...
+  │   └── (기타 폴더들)    # picture, chu, audio 등
+  ```
+
+- **오디오 파일 위치**: `data/raw/xx_yy/audios/*.wav`
+- **지원 형식**: .wav, .m4a, .mp3 (librosa 호환)
+- **파일 개수**: 각 수박당 약 9개 내외의 오디오 샘플
+
+### 오디오 전처리 표준
+
+- **샘플링 레이트**: 22050 Hz (표준)
+- **전처리 과정**:
+  1. 세그멘테이션: 묵음 구간 제거 (`librosa.effects.trim`)
+  2. 정규화: 진폭을 -1~1 범위로 스케일링
+  3. 노이즈 제거: 필요시 저역 통과 필터 적용
+
+### 특징 추출 표준 (총 51개 특징)
+
+- **MFCC 특성**: 13개 (음성학적 특성)
+- **스펙트럴 특성**: 7개 (주파수 도메인)
+- **에너지 특성**: 4개 (강도 및 품질)
+- **리듬 특성**: 3개 (타이밍과 비트)
+- **수박 전용 특성**: 8개 (도메인 특화)
+- **통계적 특성**: 16개 (멜-스펙트로그램 기반)
+
+### 라벨링 규칙
+
+- 당도값은 float 타입으로 처리 (8.7 ~ 12.7 Brix)
+- 회귀 문제로 접근 (연속값 예측)
+- 데이터 분할: Train(70%) / Validation(15%) / Test(15%)
+
+## ML 모델 개발 규칙
+
+### 모델 아키텍처
+
+1. **Gradient Boosting Trees**
+
+   - `n_estimators`: 100-500
+   - `learning_rate`: 0.01-0.2
+   - `max_depth`: 3-8
+   - **장점**: 작은 데이터셋에 강함, 특징 중요도 제공
+
+2. **Support Vector Machine**
+
+   - `kernel`: 'rbf', 'poly', 'linear'
+   - `C`: 0.1-100 (정규화 파라미터)
+   - `gamma`: 'scale', 'auto', 수동 설정
+   - **장점**: 소규모 데이터에 매우 효과적
+
+3. **Random Forest**
+   - `n_estimators`: 100-500
+   - `max_depth`: None 또는 5-20
+   - `min_samples_split`: 2-10
+   - **장점**: 과적합 방지, 안정적 성능
+
+### 훈련 가이드라인
+
+- **Loss Function**: MAE 또는 MSE (회귀)
+- **교차 검증**: 5-fold CV 필수
+- **특징 스케일링**: StandardScaler 또는 MinMaxScaler (SVM 필수)
+- **하이퍼파라미터 튜닝**: GridSearchCV 또는 RandomizedSearchCV
+
+### 실험 관리
+
+- **메트릭 추적**: MAE, MSE, R² score, 훈련 시간
+- **특징 중요도**: 각 모델별 특징 기여도 분석
+- **교차 검증**: 안정성 평가를 위한 CV 점수 기록
+- **재현성**: random seed 고정 (42)
+
+## 성능 최적화 규칙
+
+### 모델 성능 목표
+
+- **MAE < 1.0 Brix**: 현재 CNN 대비 개선
+- **R² > 0**: 설명력 확보
+- **훈련 시간 < 10분**: 빠른 실험 iteration
+- **추론 시간 < 1ms**: 실시간 예측 가능
+
+### 특징 최적화
+
+- **특징 선택**: Recursive Feature Elimination (RFE)
+- **차원 축소**: PCA 적용 (선택사항)
+- **특징 엔지니어링**: 도메인 지식 기반 새로운 특징 생성
+
+### 앙상블 최적화
+
+- **Voting Regressor**: 3개 모델의 평균 예측
+- **Stacking**: 메타 모델을 통한 고차원 앙상블
+- **가중 평균**: 검증 성능 기반 가중치 할당
+
+### iOS 배포 최적화
+
+- **모델 크기**: Core ML 모델 50MB 이하 목표
+- **추론 속도**: 모바일에서 100ms 이하 목표
+- **정확도 보존**: 변환 과정에서 99.9% 정확도 유지
+- **호환성**: iOS 14+ 지원 Core ML 포맷
+- **최적화**: 양자화 및 압축 기법 적용
+
+## 필수 패키지 요구사항
+
+```txt
+# 핵심 ML 라이브러리
+scikit-learn>=1.3.0
+pandas>=1.5.0
+numpy>=1.21.0
+
+# 오디오 처리
+librosa>=0.9.0
+soundfile>=0.12.0
+
+# 데이터 분석 및 시각화
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.0.0
+
+# 모델 저장 및 관리
+joblib>=1.2.0
+pickle-protocol>=5
+
+# 모델 변환 (iOS 배포용)
+skl2onnx>=1.15.0
+onnx>=1.12.0
+coremltools>=7.0
+
+# 설정 관리
+PyYAML>=6.0
+configparser>=5.3.0
+
+# 유틸리티
+tqdm>=4.64.0
+scipy>=1.9.0
+```
+
+## 테스트 & 검증 규칙
+
+### 모델 검증 전략
+
+1. **홀드아웃 검증**: Train/Val/Test 분할
+2. **K-fold 교차 검증**: 안정성 평가
+3. **시간 기반 분할**: 실제 사용 시나리오 모방
+4. **리키지 검증**: 데이터 누출 방지
+
+### 성능 평가 지표
+
+- **회귀 메트릭**: MAE, MSE, RMSE, R², MAPE
+- **통계적 유의성**: t-test, Wilcoxon signed-rank test
+- **예측 구간**: 불확실성 정량화
+- **시각적 평가**: 잔차 플롯, Q-Q 플롯
+
+### 단위 테스트
+
+- 특징 추출 함수 테스트
+- 모델 학습/예측 파이프라인 테스트
+- 데이터 전처리 검증 테스트
+
+## 실험 추적 및 관리
+
+### 실험 로깅
+
+- **MLflow**: 실험 추적 및 모델 관리
+- **실험 ID**: 타임스탬프 기반 고유 식별자
+- **하이퍼파라미터**: 모든 설정값 기록
+- **메트릭**: 훈련/검증/테스트 성능 추적
+
+### 모델 버전 관리
+
+- **Git**: 코드 버전 관리
+- **DVC**: 데이터 및 모델 버전 관리 (선택사항)
+- **모델 레지스트리**: 최적 모델 추적
+
+## 문서화 규칙
+
+### README 필수 포함 사항
+
+- 프로젝트 설명 및 목표
+- 환경 설정 및 설치 방법
+- 데이터셋 준비 가이드
+- 모델 훈련 실행 방법
+- 결과 해석 및 특징 중요도 분석
+- 성능 비교 (vs CNN)
+
+### 진행사항 업데이트
+
+- 진행한 사항들에 대해서 @ml-model-todolist.mdc 파일에 매번 업데이트 필수
+
+### 코드 문서화
+
+- 모든 클래스와 함수에 docstring 필수
+- 특징 추출 알고리즘 상세 설명
+- 하이퍼파라미터 설정 이유 명시
+
+## 주의사항 및 제약사항
+
+### 데이터 품질 관리
+
+- **일관된 녹음 환경**: 배경 소음, 마이크 거리 통제
+- **라벨 정확성**: 당도 측정 오차 최소화
+- **데이터 균형**: 당도 구간별 샘플 수 균형
+
+### 과적합 방지
+
+- **정규화**: L1/L2 정규화 적용
+- **조기 중단**: 검증 손실 기반 학습 중단
+- **앙상블**: 여러 모델의 평균으로 분산 감소
+
+### 특징 스케일링 필수
+
+- **SVM 모델**: 특징 스케일에 매우 민감
+- **StandardScaler**: 평균 0, 표준편차 1로 정규화
+- **일관성**: 훈련/테스트 데이터 동일한 scaler 적용
+
+### 성능 검증
+
+- **베이스라인**: 단순 평균 예측과 비교
+- **CNN 비교**: 기존 VGG 모델 대비 성능 평가
+- **통계적 검정**: 성능 차이의 유의성 검증
+
+---
+
+이 규칙을 따라 체계적이고 재현 가능한 전통적인 ML 프로젝트를 구축하세요. 🚀
+description:
+globs:
+alwaysApply: false
+
+---

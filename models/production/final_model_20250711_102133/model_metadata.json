@@ -1,0 +1,67 @@
+{
+  "model_info": {
+    "name": "WatermelonSweetnessPredictionModel",
+    "version": "1.0.0",
+    "type": "RandomForest",
+    "algorithm": "Progressive Feature Selection + Random Forest",
+    "creation_date": "2025-07-11T10:21:33.285445",
+    "author": "Watermelon ML Project Team"
+  },
+  "data_info": {
+    "feature_count": 10,
+    "selected_features": [
+      "fundamental_frequency",
+      "mel_spec_median",
+      "spectral_rolloff",
+      "mel_spec_q75",
+      "mel_spec_rms",
+      "mfcc_5",
+      "mfcc_13",
+      "mel_spec_kurtosis",
+      "decay_rate",
+      "mfcc_10"
+    ],
+    "target_variable": "sweetness_brix",
+    "feature_selection_method": "progressive_selection",
+    "scaling_method": "StandardScaler"
+  },
+  "performance": {
+    "test_mae": 0.10586363636363817,
+    "test_rmse": 0.1297208541445822,
+    "test_r2": 0.9877000875921228,
+    "test_mape": 1.0261114613577123,
+    "test_max_error": 0.2510000000000048,
+    "test_samples": 22
+  },
+  "goals_achieved": {
+    "mae_goal": 1.0,
+    "mae_achieved": 0.10586363636363817,
+    "mae_improvement_factor": 9.44611421210804,
+    "r2_goal": 0.8,
+    "r2_achieved": 0.9877000875921228,
+    "r2_excess": 0.18770008759212276
+  },
+  "model_config": {
+    "n_estimators": 200,
+    "max_depth": 15,
+    "min_samples_split": 2,
+    "min_samples_leaf": 1,
+    "max_features": "sqrt",
+    "random_state": 42
+  },
+  "deployment_info": {
+    "input_shape": [
+      10
+    ],
+    "output_shape": [
+      1
+    ],
+    "preprocessing_required": true,
+    "scaling_required": true,
+    "supported_formats": [
+      "pkl",
+      "joblib"
+    ],
+    "mobile_ready": true
+  }
+}

@@ -1,0 +1,290 @@
+# 🍉 수박 당도 예측 - 전통적인 ML 모델 설정
+# scikit-learn 기반 GBT, SVM, Random Forest 모델 하이퍼파라미터 설정
+
+# =============================================================================
+# 전역 설정
+# =============================================================================
+global:
+  random_state: 42
+  n_jobs: -1  # 모든 CPU 코어 사용
+  verbose: 1
+
+# =============================================================================
+# 데이터 전처리 설정
+# =============================================================================
+preprocessing:
+  # 특징 스케일링 (SVM에 필수, 다른 모델에도 도움)
+  feature_scaling:
+    enabled: true
+    method: "standard"  # standard, minmax, robust
+    
+  # 특징 선택 (선택사항)
+  feature_selection:
+    enabled: false
+    method: "rfe"  # rfe, selectkbest, selectfrommodel
+    n_features: 30
+
+# =============================================================================
+# 교차 검증 설정
+# =============================================================================
+cross_validation:
+  cv_folds: 5
+  scoring: "neg_mean_absolute_error"  # MAE 최소화
+  shuffle: true
+  stratify: false  # 회귀 문제이므로 false
+
+# =============================================================================
+# Gradient Boosting Trees (GBT) 설정
+# =============================================================================
+gradient_boosting:
+  # 기본 하이퍼파라미터
+  base_params:
+    n_estimators: 200
+    learning_rate: 0.1
+    max_depth: 6
+    min_samples_split: 5
+    min_samples_leaf: 2
+    subsample: 0.8
+    max_features: "sqrt"
+    random_state: 42
+    
+  # 고급 설정
+  advanced:
+    loss: "squared_error"  # 회귀용
+    criterion: "friedman_mse"
+    warm_start: false
+    validation_fraction: 0.1
+    n_iter_no_change: 10
+    tol: 1e-4
+    
+  # 하이퍼파라미터 튜닝용 그리드 (Phase 4에서 사용)
+  hyperparameter_grid:
+    n_estimators: [100, 200, 300, 500]
+    learning_rate: [0.01, 0.05, 0.1, 0.2]
+    max_depth: [3, 4, 6, 8]
+    min_samples_split: [2, 5, 10]
+    min_samples_leaf: [1, 2, 4]
+    subsample: [0.7, 0.8, 0.9, 1.0]
+    max_features: ["sqrt", "log2", 0.3, 0.5, 0.7]
+
+# =============================================================================
+# Support Vector Machine (SVM) 설정
+# =============================================================================
+svm:
+  # 기본 하이퍼파라미터
+  base_params:
+    kernel: "rbf"
+    C: 10.0
+    gamma: "scale"
+    epsilon: 0.1
+    tol: 1e-3
+    cache_size: 200
+    max_iter: -1
+    
+  # 하이퍼파라미터 튜닝용 그리드
+  hyperparameter_grid:
+    kernel: ["rbf", "poly", "sigmoid"]
+    C: [0.1, 1, 10, 100, 1000]
+    gamma: ["scale", "auto", 0.001, 0.01, 0.1, 1]
+    epsilon: [0.01, 0.1, 0.2, 0.5]
+    
+  # 다항식 커널 전용 설정
+  poly_specific:
+    degree: [2, 3, 4]
+    coef0: [0, 1, 2]
+
+# =============================================================================
+# Random Forest 설정
+# =============================================================================
+random_forest:
+  # 기본 하이퍼파라미터
+  base_params:
+    n_estimators: 200
+    max_depth: 10
+    min_samples_split: 5
+    min_samples_leaf: 2
+    max_features: "sqrt"
+    bootstrap: true
+    oob_score: true
+    random_state: 42
+    
+  # 고급 설정
+  advanced:
+    criterion: "squared_error"  # 회귀용
+    max_samples: null  # bootstrap 샘플 수
+    min_weight_fraction_leaf: 0.0
+    max_leaf_nodes: null
+    min_impurity_decrease: 0.0
+    warm_start: false
+    ccp_alpha: 0.0
+    
+  # 하이퍼파라미터 튜닝용 그리드
+  hyperparameter_grid:
+    n_estimators: [100, 200, 300, 500]
+    max_depth: [3, 5, 10, 15, 20, null]
+    min_samples_split: [2, 5, 10, 20]
+    min_samples_leaf: [1, 2, 4, 8]
+    max_features: ["sqrt", "log2", 0.3, 0.5, 0.7, 1.0]
+    bootstrap: [true, false]
+
+# =============================================================================
+# 앙상블 모델 설정 (Phase 4에서 사용)
+# =============================================================================
+ensemble:
+  # Voting Regressor 설정
+  voting:
+    voting: "soft"  # 분류의 경우, 회귀에서는 평균
+    weights: null  # 동일 가중치, 나중에 성능 기반으로 조정
+    
+  # Stacking 설정
+  stacking:
+    cv: 5
+    final_estimator: "linear_regression"  # 메타 모델
+    passthrough: false
+    
+  # Bagging 설정
+  bagging:
+    n_estimators: 10
+    max_samples: 1.0
+    max_features: 1.0
+    bootstrap: true
+    bootstrap_features: false
+
+# =============================================================================
+# 훈련 설정
+# =============================================================================
+training:
+  # 데이터 분할 비율 (이미 분할되어 있지만 참고용)
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  
+  # 배치 크기 (메모리 관리용)
+  batch_size: 32
+  
+  # 조기 중단 (GBT에만 적용)
+  early_stopping:
+    enabled: true
+    patience: 10
+    restore_best_weights: true
+
+# =============================================================================
+# 평가 메트릭 설정
+# =============================================================================
+evaluation:
+  # 주요 회귀 메트릭
+  primary_metrics:
+    - "mae"           # Mean Absolute Error (주요 목표: < 1.0)
+    - "mse"           # Mean Squared Error
+    - "rmse"          # Root Mean Squared Error
+    - "r2"            # R² Score (목표: > 0.8)
+    - "mape"          # Mean Absolute Percentage Error
+    
+  # 추가 메트릭
+  additional_metrics:
+    - "median_ae"     # Median Absolute Error
+    - "max_error"     # Maximum Error
+    - "explained_var" # Explained Variance
+    
+  # 사용자 정의 메트릭
+  custom_metrics:
+    accuracy_0_5: "within_0_5_brix"  # ±0.5 Brix 내 정확도
+    accuracy_1_0: "within_1_0_brix"  # ±1.0 Brix 내 정확도
+
+# =============================================================================
+# 실험 추적 설정
+# =============================================================================
+experiment:
+  # 실험 이름 및 태그
+  name: "watermelon_traditional_ml"
+  tags: ["traditional_ml", "audio_features", "sweetness_prediction"]
+  
+  # 로깅 설정
+  logging:
+    level: "INFO"
+    save_logs: true
+    log_file: "experiments/training.log"
+    
+  # 모델 저장 설정
+  model_saving:
+    save_best_only: true
+    save_all_models: false
+    model_dir: "models/saved"
+    
+  # 결과 저장 설정
+  results:
+    save_predictions: true
+    save_metrics: true
+    save_feature_importance: true
+    results_dir: "experiments"
+
+# =============================================================================
+# 시각화 설정
+# =============================================================================
+visualization:
+  # 플롯 스타일
+  style: "seaborn-v0_8"
+  figure_size: [10, 8]
+  dpi: 300
+  
+  # 색상 팔레트
+  color_palette: "husl"
+  
+  # 저장 형식
+  save_formats: ["png", "pdf"]
+  save_dir: "experiments/plots"
+  
+  # 생성할 플롯 유형
+  plot_types:
+    - "performance_comparison"
+    - "prediction_scatter"
+    - "residual_plot"
+    - "feature_importance"
+    - "learning_curve"
+    - "cross_validation_scores"
+
+# =============================================================================
+# 성능 목표
+# =============================================================================
+performance_targets:
+  # 주요 목표 (CNN 모델 대비 개선)
+  mae_target: 1.0          # MAE < 1.0 Brix
+  r2_target: 0.8           # R² > 0.8
+  
+  # 추가 목표
+  training_time_max: 600   # 10분 이내
+  inference_time_max: 0.001  # 1ms 이내
+  
+  # 정확도 목표
+  accuracy_within_0_5: 0.7  # 70% 이상이 ±0.5 Brix 내
+  accuracy_within_1_0: 0.9  # 90% 이상이 ±1.0 Brix 내
+
+# =============================================================================
+# 하이퍼파라미터 튜닝 설정 (Phase 4용)
+# =============================================================================
+hyperparameter_tuning:
+  # 튜닝 방법
+  method: "grid_search"  # grid_search, random_search, bayesian
+  
+  # GridSearchCV 설정
+  grid_search:
+    cv: 5
+    scoring: "neg_mean_absolute_error"
+    n_jobs: -1
+    verbose: 2
+    return_train_score: true
+    
+  # RandomizedSearchCV 설정
+  random_search:
+    n_iter: 100
+    cv: 5
+    scoring: "neg_mean_absolute_error"
+    n_jobs: -1
+    verbose: 2
+    random_state: 42
+    
+  # 베이지안 최적화 설정 (optuna 사용시)
+  bayesian:
+    n_trials: 100
+    sampler: "TPE"
+    pruner: "MedianPruner" 

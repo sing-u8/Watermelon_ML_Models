@@ -1,0 +1,235 @@
+# ================================================================================
+# 하이퍼파라미터 검색 설정 파일
+# ================================================================================
+# 
+# 이 파일은 전통적인 ML 모델들의 하이퍼파라미터 튜닝을 위한 검색 공간을 정의합니다.
+# GridSearchCV와 RandomizedSearchCV 모두에서 사용 가능합니다.
+#
+# 작성자: ML Team
+# 생성일: 2025-01-15
+# 목적: 수박 당도 예측 모델의 성능 최적화
+#
+# ================================================================================
+
+# Gradient Boosting Trees 하이퍼파라미터
+gradient_boosting:
+  # 부스팅 관련 파라미터
+  n_estimators: [50, 100, 200, 300, 500]  # 부스팅 단계 수
+  learning_rate: [0.01, 0.05, 0.1, 0.15, 0.2]  # 학습률
+  
+  # 트리 구조 파라미터
+  max_depth: [3, 4, 5, 6, 7, 8, 9]  # 트리 최대 깊이
+  min_samples_split: [2, 5, 10, 15, 20]  # 분할을 위한 최소 샘플 수
+  min_samples_leaf: [1, 2, 4, 6, 8]  # 리프 노드 최소 샘플 수
+  max_features: ['sqrt', 'log2', null, 0.5, 0.7, 0.9]  # 최대 특징 수
+  
+  # 정규화 파라미터
+  subsample: [0.6, 0.7, 0.8, 0.9, 1.0]  # 서브샘플링 비율
+  
+  # 고급 파라미터
+  max_leaf_nodes: [null, 10, 20, 30, 50]  # 최대 리프 노드 수
+  min_impurity_decrease: [0.0, 0.01, 0.02, 0.05]  # 불순도 감소 임계값
+  
+  # 손실 함수
+  loss: ['squared_error', 'absolute_error', 'huber']  # 손실 함수 종류
+  alpha: [0.1, 0.5, 0.9, 0.95, 0.99]  # Huber와 quantile 손실용 알파
+
+# Support Vector Machine 하이퍼파라미터
+svm:
+  # 정규화 파라미터
+  C: [0.01, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0]  # 정규화 강도
+  
+  # 커널 관련 파라미터
+  kernel: ['linear', 'poly', 'rbf', 'sigmoid']  # 커널 함수
+  gamma: ['scale', 'auto', 0.0001, 0.001, 0.01, 0.1, 1.0]  # 커널 계수
+  
+  # 다항식 커널 파라미터
+  degree: [2, 3, 4, 5]  # 다항식 차수 (poly kernel)
+  coef0: [0.0, 0.1, 0.5, 1.0]  # 독립 항 (poly, sigmoid kernel)
+  
+  # 회귀 관련 파라미터
+  epsilon: [0.01, 0.05, 0.1, 0.2, 0.5]  # SVR 엡실론 튜브
+  
+  # 수치 안정성 파라미터
+  tol: [1e-4, 1e-3, 1e-2]  # 수렴 허용 오차
+  max_iter: [1000, 2000, 5000]  # 최대 반복 횟수
+  
+  # 메모리 관리
+  cache_size: [200, 500, 1000]  # 커널 캐시 크기 (MB)
+
+# Random Forest 하이퍼파라미터
+random_forest:
+  # 앙상블 파라미터
+  n_estimators: [50, 100, 200, 300, 500, 800, 1000]  # 트리 개수
+  
+  # 트리 구조 파라미터
+  max_depth: [null, 5, 10, 15, 20, 25, 30]  # 트리 최대 깊이
+  min_samples_split: [2, 5, 10, 15, 20]  # 분할을 위한 최소 샘플 수
+  min_samples_leaf: [1, 2, 4, 6, 8, 10]  # 리프 노드 최소 샘플 수
+  max_features: ['sqrt', 'log2', null, 0.3, 0.5, 0.7, 0.9]  # 최대 특징 수
+  
+  # 부트스트래핑 파라미터
+  bootstrap: [true, false]  # 부트스트래핑 사용 여부
+  oob_score: [true, false]  # Out-of-bag 점수 계산 여부
+  
+  # 정규화 파라미터
+  max_leaf_nodes: [null, 10, 20, 30, 50, 100]  # 최대 리프 노드 수
+  min_impurity_decrease: [0.0, 0.01, 0.02, 0.05, 0.1]  # 불순도 감소 임계값
+  
+  # 고급 파라미터
+  max_samples: [null, 0.5, 0.7, 0.8, 0.9]  # 최대 샘플 수 (bootstrap=True일 때)
+  ccp_alpha: [0.0, 0.01, 0.02, 0.05]  # 최소 비용 복잡도 가지치기
+
+# ================================================================================
+# 검색 전략 설정
+# ================================================================================
+
+search_strategies:
+  # GridSearchCV 설정
+  grid_search:
+    # 축소된 그리드 (빠른 테스트용)
+    quick:
+      gradient_boosting:
+        n_estimators: [100, 200]
+        learning_rate: [0.1, 0.2]
+        max_depth: [3, 6]
+      svm:
+        C: [1, 10]
+        gamma: ['scale', 0.01]
+        kernel: ['rbf']
+      random_forest:
+        n_estimators: [100, 200]
+        max_depth: [null, 10]
+        min_samples_split: [2, 5]
+    
+    # 완전 그리드 (철저한 검색용)
+    full:
+      gradient_boosting:
+        n_estimators: [100, 200, 300]
+        learning_rate: [0.01, 0.1, 0.2]
+        max_depth: [3, 6, 9]
+        subsample: [0.8, 0.9, 1.0]
+      svm:
+        C: [0.1, 1, 10, 100]
+        gamma: ['scale', 'auto', 0.001, 0.01]
+        kernel: ['rbf', 'poly']
+      random_forest:
+        n_estimators: [100, 200, 300]
+        max_depth: [null, 10, 20]
+        min_samples_split: [2, 5, 10]
+        max_features: ['sqrt', null]
+
+  # RandomizedSearchCV 설정
+  random_search:
+    # 반복 횟수별 설정
+    iterations:
+      quick: 20      # 빠른 테스트
+      medium: 50     # 중간 정도
+      thorough: 100  # 철저한 검색
+      extensive: 200 # 매우 철저한 검색
+
+# ================================================================================
+# 평가 설정
+# ================================================================================
+
+evaluation:
+  # 교차 검증 설정
+  cross_validation:
+    cv_folds: [3, 5, 7, 10]  # 교차 검증 폴드 수
+    scoring_metrics: 
+      - 'neg_mean_absolute_error'  # 주요 메트릭
+      - 'neg_mean_squared_error'
+      - 'r2'
+      - 'neg_median_absolute_error'
+  
+  # 성능 개선 기준
+  improvement_thresholds:
+    mae_improvement: 0.05      # MAE 개선 임계값 (Brix)
+    r2_improvement: 0.02       # R² 개선 임계값
+    time_budget: 3600          # 최대 허용 시간 (초)
+
+# ================================================================================
+# 특수 설정
+# ================================================================================
+
+# 도메인 특화 설정 (수박 당도 예측)
+domain_specific:
+  # 당도 범위 고려 파라미터 조정
+  target_range:
+    min_sweetness: 8.1   # 최소 당도
+    max_sweetness: 12.9  # 최대 당도
+    precision_target: 0.1  # 목표 정밀도 (Brix)
+  
+  # 특징 수 고려 (51개 특징)
+  feature_considerations:
+    total_features: 51
+    recommend_max_features_ratio: 0.7  # 권장 최대 특징 비율
+    
+  # 데이터셋 크기 고려 (146개 샘플)
+  dataset_size:
+    total_samples: 146
+    train_samples: 102
+    complexity_adjustment: 'conservative'  # 과적합 방지를 위한 보수적 설정
+
+# 시스템 리소스 고려
+system_resources:
+  memory_budget: '8GB'     # 메모리 예산
+  cpu_cores: 8             # 사용 가능 CPU 코어
+  time_budget: '2hours'    # 시간 예산
+  
+# 재현성 설정
+reproducibility:
+  random_state: 42         # 고정 랜덤 시드
+  n_jobs: -1              # 병렬 처리 (-1: 모든 코어 사용)
+  verbose: 1              # 로깅 레벨
+
+# ================================================================================
+# 실험 추적 설정
+# ================================================================================
+
+experiment_tracking:
+  # 결과 저장 경로
+  results_dir: "experiments/hyperparameter_tuning"
+  
+  # 저장할 메트릭
+  save_metrics:
+    - 'best_score'
+    - 'best_params'
+    - 'search_time'
+    - 'cv_results'
+    - 'feature_importance'  # Random Forest, GBT용
+  
+  # 모델 저장 설정
+  model_saving:
+    save_best_models: true
+    save_all_models: false
+    compress_models: true
+  
+  # 로깅 설정
+  logging:
+    level: 'INFO'
+    save_logs: true
+    log_file: 'hyperparameter_tuning.log'
+
+# ================================================================================
+# 주의사항 및 권장사항
+# ================================================================================
+
+# 사용 가이드:
+# 1. 'quick' 설정으로 먼저 테스트해보세요
+# 2. 좋은 결과가 나오면 'full' 또는 'random' 검색을 사용하세요
+# 3. 시간 제약이 있다면 RandomizedSearchCV를 권장합니다
+# 4. SVM은 특징 스케일링이 필수입니다
+# 5. 작은 데이터셋이므로 과적합에 주의하세요
+
+# 성능 팁:
+# - n_jobs=-1로 병렬 처리 활용
+# - 메모리가 부족하면 batch_size를 줄이세요
+# - 시간이 오래 걸리면 n_iter를 줄이세요
+# - 최고 성능 달성 후 앙상블 고려
+
+# 실험 전략:
+# Phase 1: quick 설정으로 빠른 탐색
+# Phase 2: 유망한 모델에 대해 full 검색
+# Phase 3: RandomizedSearchCV로 정밀 튜닝
+# Phase 4: 최종 모델 선택 및 앙상블 

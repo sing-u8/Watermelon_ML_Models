@@ -1,0 +1,127 @@
+# 🍉 수박 당도 예측 ML 프로젝트 - 전처리 설정 파일
+# Audio Preprocessing Configuration
+
+audio:
+  # 기본 오디오 설정
+  sample_rate: 22050              # 샘플링 레이트 (Hz)
+  duration: null                  # 오디오 길이 제한 (초, null=전체 길이)
+  mono: true                      # 모노 변환 여부
+  
+  # 전처리 옵션
+  trim:
+    enabled: true                 # 묵음 구간 제거 활성화
+    top_db: 20                    # dB 임계값 (작을수록 더 많이 제거)
+    frame_length: 2048           # 프레임 길이
+    hop_length: 512              # 홉 길이
+  
+  # 정규화 설정
+  normalize:
+    enabled: true                 # 정규화 활성화
+    method: "peak"                # "peak" 또는 "rms"
+    target_level: 0.9             # 목표 레벨 (0-1)
+  
+  # 노이즈 필터링 (선택사항)
+  filter_noise:
+    enabled: false                # 노이즈 필터링 활성화
+    low_freq: 80                  # 저역 통과 필터 최소 주파수 (Hz)
+    high_freq: 8000               # 고역 통과 필터 최대 주파수 (Hz)
+  
+  # 윈도우 함수 설정
+  window:
+    type: "hann"                  # 윈도우 함수 타입
+    center: true                  # 중앙 정렬 여부
+  
+  # 스펙트로그램 설정
+  spectrogram:
+    n_fft: 2048                   # FFT 윈도우 크기
+    hop_length: 512               # 홉 길이
+    win_length: null              # 윈도우 길이 (null=n_fft)
+    window: "hann"                # 윈도우 함수
+  
+# 특징 추출 설정
+features:
+  # MFCC 특성 (13개)
+  mfcc:
+    n_mfcc: 13                    # MFCC 계수 개수
+    n_fft: 2048                   # FFT 크기
+    hop_length: 512               # 홉 길이
+    n_mels: 128                   # 멜 필터 개수
+    fmin: 0                       # 최소 주파수
+    fmax: null                    # 최대 주파수 (null=sr/2)
+  
+  # 스펙트럴 특성 (7개)
+  spectral:
+    n_fft: 2048                   # FFT 크기
+    hop_length: 512               # 홉 길이
+    centroid: true                # 스펙트럴 중심
+    bandwidth: true               # 스펙트럴 대역폭
+    contrast: true                # 스펙트럴 대비
+    flatness: true                # 스펙트럴 평탄도
+    rolloff: true                 # 스펙트럴 롤오프
+    zcr: true                     # 영교차율
+    rmse: true                    # RMS 에너지
+  
+  # 멜 스펙트로그램 통계 (16개)
+  mel_spectrogram:
+    n_mels: 128                   # 멜 필터 개수
+    n_fft: 2048                   # FFT 크기
+    hop_length: 512               # 홉 길이
+    fmin: 0                       # 최소 주파수
+    fmax: null                    # 최대 주파수
+    statistics:                   # 추출할 통계량
+      - "mean"
+      - "std"
+      - "min"
+      - "max"
+      - "median"
+      - "q25"
+      - "q75"
+      - "skewness"
+      - "kurtosis"
+      - "energy"
+      - "entropy"
+      - "rms"
+      - "peak"
+      - "crest_factor"
+      - "spectral_slope"
+      - "harmonic_mean"
+  
+  # 리듬 특성 (3개)
+  rhythm:
+    tempo: true                   # 템포 추출
+    beat_track: true              # 비트 추적
+    onset_strength: true          # 온셋 강도
+    hop_length: 512               # 홉 길이
+  
+  # 수박 전용 특성 (8개)
+  watermelon_specific:
+    fundamental_freq: true        # 기본 주파수
+    harmonic_ratio: true          # 하모닉 비율
+    attack_time: true             # 어택 타임
+    decay_rate: true              # 감쇠율
+    sustain_level: true           # 서스테인 레벨
+    brightness: true              # 밝기 (고주파 에너지)
+    roughness: true               # 거칠기
+    inharmonicity: true           # 비하모닉성
+  
+  # 에너지 특성 (4개)
+  energy:
+    rms_energy: true              # RMS 에너지
+    peak_energy: true             # 피크 에너지
+    energy_entropy: true          # 에너지 엔트로피
+    dynamic_range: true           # 다이나믹 레인지
+
+# 데이터 품질 검증 설정
+quality_check:
+  min_duration: 0.1               # 최소 오디오 길이 (초)
+  max_duration: 10.0              # 최대 오디오 길이 (초)
+  check_clipping: true            # 클리핑 검사
+  check_silence: true             # 무음 검사
+  silence_threshold: -60          # 무음 임계값 (dB)
+  max_silence_ratio: 0.8          # 최대 무음 비율
+
+# 로깅 설정
+logging:
+  level: "INFO"                   # 로그 레벨
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  progress_bar: true              # 진행률 표시 
