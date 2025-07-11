@@ -43,7 +43,7 @@ model_config:
 model_info:
   algorithm: Progressive Feature Selection + Random Forest
   author: Watermelon ML Project Team
-  creation_date: '2025-07-12T00:27:54.487127'
+  creation_date: '2025-07-12T01:01:35.660838'
   name: WatermelonSweetnessPredictionModel
   type: RandomForest
   version: 1.0.0
