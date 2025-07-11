@@ -1,0 +1,369 @@
+# 🍉 iOS 수박 당도 측정 앱 개발 규칙서
+
+## 📱 프로젝트 개요
+
+Core ML 기반 수박 당도 예측 모델을 활용한 실시간 수박 당도 측정 iOS 앱 개발 프로젝트
+
+### 🎯 목표
+
+- Core ML 모델 (`watermelon_sweetness_predictor.mlmodel`)을 활용한 실시간 당도 예측
+- 수박 소리 녹음 → 음향 특징 추출 → 당도 예측 파이프라인 구축
+- 사용자 친화적인 네이티브 iOS 앱 개발
+- 높은 정확도 (MAE 0.0974 Brix) 유지 및 실시간 처리
+
+### 🔧 기술 스택
+
+- **플랫폼**: iOS 15.0+, iPadOS 15.0+
+- **언어**: Swift 5.7+
+- **UI 프레임워크**: SwiftUI
+- **ML 프레임워크**: Core ML 5.0+
+- **오디오 처리**: AVFoundation, Accelerate
+- **개발 도구**: Xcode 14.0+
+
+## 🏗️ 앱 아키텍처
+
+### MVVM 패턴 기반 구조
+
+```
+WatermelonSweetnessApp/
+├── Models/                    # 데이터 모델 및 Core ML 래퍼
+│   ├── WatermelonModel.swift
+│   ├── AudioFeatures.swift
+│   └── PredictionResult.swift
+├── ViewModels/               # 비즈니스 로직
+│   ├── RecordingViewModel.swift
+│   ├── PredictionViewModel.swift
+│   └── HistoryViewModel.swift
+├── Views/                    # SwiftUI 뷰
+│   ├── ContentView.swift
+│   ├── RecordingView.swift
+│   ├── ResultView.swift
+│   └── HistoryView.swift
+├── Services/                 # 핵심 서비스
+│   ├── AudioRecordingService.swift
+│   ├── AudioFeatureExtractor.swift
+│   ├── MLPredictionService.swift
+│   └── DataPersistenceService.swift
+├── Utils/                    # 유틸리티
+│   ├── AudioProcessor.swift
+│   ├── Constants.swift
+│   └── Extensions.swift
+├── Resources/               # 리소스
+│   ├── watermelon_sweetness_predictor.mlmodel
+│   ├── Assets.xcassets
+│   └── Localizable.strings
+└── Tests/                   # 테스트
+    ├── UnitTests/
+    └── UITests/
+```
+
+## 🎵 오디오 처리 및 특징 추출 규칙
+
+### 오디오 녹음 요구사항
+
+```swift
+// 녹음 설정 표준
+let audioSettings: [String: Any] = [
+    AVFormatIDKey: kAudioFormatLinearPCM,
+    AVSampleRateKey: 22050.0,          // ML 모델 학습 시 사용한 샘플링 레이트
+    AVNumberOfChannelsKey: 1,          // 모노 채널
+    AVLinearPCMBitDepthKey: 16,
+    AVLinearPCMIsFloatKey: false,
+    AVLinearPCMIsBigEndianKey: false
+]
+```
+
+### 필수 구현 특징 (10개)
+
+```swift
+struct AudioFeatures {
+    let fundamentalFrequency: Float    // 기본 주파수
+    let melSpecMedian: Float          // 멜 스펙트로그램 중앙값
+    let spectralRolloff: Float        // 스펙트럽 롤오프
+    let melSpecQ75: Float             // 멜 스펙트로그램 75% 분위수
+    let melSpecRms: Float             // 멜 스펙트로그램 RMS
+    let mfcc5: Float                  // MFCC 계수 5
+    let mfcc13: Float                 // MFCC 계수 13
+    let melSpecKurtosis: Float        // 멜 스펙트로그램 첨도
+    let decayRate: Float              // 감쇠율
+    let mfcc10: Float                 // MFCC 계수 10
+}
+```
+
+### 오디오 전처리 파이프라인
+
+```swift
+// 1단계: 세그멘테이션 (묵음 구간 제거)
+func trimSilence(audioData: [Float], threshold: Float = 0.01) -> [Float]
+
+// 2단계: 정규화 (-1.0 ~ 1.0 범위)
+func normalizeAudio(audioData: [Float]) -> [Float]
+
+// 3단계: 특징 추출
+func extractFeatures(audioData: [Float]) -> AudioFeatures
+
+// 4단계: 표준화 (ML 모델 입력용)
+func standardizeFeatures(features: AudioFeatures) -> AudioFeatures
+```
+
+## 🤖 Core ML 통합 규칙
+
+### 모델 로딩 및 예측
+
+```swift
+class MLPredictionService: ObservableObject {
+    private var model: watermelon_sweetness_predictor?
+
+    init() {
+        loadModel()
+    }
+
+    private func loadModel() {
+        guard let modelURL = Bundle.main.url(forResource: "watermelon_sweetness_predictor",
+                                           withExtension: "mlmodel") else {
+            fatalError("Core ML 모델을 찾을 수 없습니다")
+        }
+
+        do {
+            self.model = try watermelon_sweetness_predictor(contentsOf: modelURL)
+        } catch {
+            print("모델 로드 실패: \(error)")
+        }
+    }
+
+    func predictSweetness(features: AudioFeatures) async -> PredictionResult? {
+        // 비동기 예측 구현
+    }
+}
+```
+
+### 표준화 규칙
+
+```swift
+// ML 모델 학습 시 사용된 StandardScaler 파라미터 적용
+struct FeatureStandardizer {
+    // 각 특징별 평균과 표준편차 (Python 모델에서 추출)
+    static let means: [Float] = [...]
+    static let stds: [Float] = [...]
+
+    static func standardize(_ features: AudioFeatures) -> AudioFeatures {
+        // 표준화 로직 구현
+    }
+}
+```
+
+## 🎨 UI/UX 디자인 가이드라인
+
+### 컬러 팔레트
+
+```swift
+extension Color {
+    static let watermelonGreen = Color(red: 0.2, green: 0.7, blue: 0.3)
+    static let watermelonRed = Color(red: 0.9, green: 0.2, blue: 0.3)
+    static let watermelonDark = Color(red: 0.1, green: 0.5, blue: 0.2)
+    static let sweetnessBad = Color.red
+    static let sweetnessGood = Color.orange
+    static let sweetnessExcellent = Color.green
+}
+```
+
+### 당도 표시 기준
+
+```swift
+enum SweetnessLevel {
+    case poor(Float)      // < 9.0 Brix
+    case fair(Float)      // 9.0 - 10.5 Brix
+    case good(Float)      // 10.5 - 12.0 Brix
+    case excellent(Float) // > 12.0 Brix
+
+    var color: Color {
+        switch self {
+        case .poor: return .sweetnessBad
+        case .fair: return .orange
+        case .good: return .sweetnessGood
+        case .excellent: return .sweetnessExcellent
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .poor: return "아직 덜 익음"
+        case .fair: return "보통"
+        case .good: return "달콤함"
+        case .excellent: return "매우 달콤함"
+        }
+    }
+}
+```
+
+### 녹음 UI 상태
+
+```swift
+enum RecordingState {
+    case idle           // 대기 상태
+    case recording      // 녹음 중
+    case processing     // 분석 중
+    case completed      // 완료
+    case error(String)  // 오류
+}
+```
+
+## 📊 성능 최적화 규칙
+
+### 메모리 관리
+
+- 오디오 데이터는 처리 후 즉시 해제
+- Core ML 모델은 싱글톤 패턴으로 관리
+- 큰 배열 연산은 백그라운드 큐에서 실행
+
+### 실시간 처리
+
+```swift
+// 타겟 성능 지표
+let targetProcessingTime: TimeInterval = 2.0  // 2초 이내 처리
+let targetRecordingDuration: TimeInterval = 3.0  // 3초 녹음
+let maxAudioFileSize: Int = 1024 * 1024  // 1MB 이하
+```
+
+### 배터리 최적화
+
+- 녹음 시간 최소화 (3-5초)
+- 불필요한 백그라운드 작업 방지
+- 화면 밝기 자동 조절 비활성화 방지
+
+## 🔒 보안 및 프라이버시 규칙
+
+### 권한 관리
+
+```swift
+// Info.plist 필수 권한
+<key>NSMicrophoneUsageDescription</key>
+<string>수박 소리를 녹음하여 당도를 측정합니다.</string>
+```
+
+### 데이터 보호
+
+- 녹음된 오디오는 로컬에만 저장
+- 개인정보 수집 금지
+- 분석 완료 후 오디오 파일 자동 삭제 옵션 제공
+
+## 🧪 테스트 전략
+
+### 단위 테스트
+
+- 각 특징 추출 함수 테스트
+- ML 모델 예측 정확도 테스트
+- 오디오 전처리 파이프라인 테스트
+
+### 통합 테스트
+
+- 전체 예측 파이프라인 테스트
+- UI 상태 전환 테스트
+- 에러 핸들링 테스트
+
+### 성능 테스트
+
+```swift
+func testPredictionPerformance() {
+    measure {
+        // 예측 성능 측정 (목표: 2초 이내)
+    }
+}
+```
+
+## 📱 배포 및 앱스토어 가이드라인
+
+### 앱 메타데이터
+
+- **앱 이름**: "수박 당도 측정기" 또는 "WatermelonSweet"
+- **카테고리**: 유틸리티 또는 음식 및 음료
+- **타겟 연령**: 4+
+- **지원 언어**: 한국어, 영어
+
+### 스크린샷 가이드라인
+
+1. 메인 화면 (녹음 대기)
+2. 녹음 중 화면
+3. 결과 표시 화면
+4. 히스토리 화면
+
+### 앱 설명
+
+```
+🍉 AI 기반 수박 당도 측정기
+
+✨ 주요 기능:
+• 수박을 두드린 소리로 당도 측정
+• 최첨단 머신러닝 기술 적용
+• 98.87% 정확도의 당도 예측
+• 간편한 원터치 측정
+• 측정 기록 관리
+
+🎯 사용법:
+1. 수박을 가볍게 두드리기
+2. 앱에서 녹음 버튼 터치
+3. 3초간 소리 녹음
+4. 당도 결과 확인
+
+🔬 기술적 특징:
+• Core ML 기반 실시간 처리
+• 10개 음향 특징 분석
+• 오프라인 동작 (인터넷 불필요)
+• 개인정보 수집 없음
+```
+
+## ⚠️ 주의사항 및 제약사항
+
+### 측정 환경
+
+- 조용한 환경에서 측정 권장
+- 수박과 기기 거리: 10-30cm
+- 일정한 강도로 두드리기
+- 백그라운드 노이즈 최소화
+
+### 면책사항
+
+```swift
+// 앱 내 면책사항 표시
+let disclaimer = """
+본 앱의 측정 결과는 참고용이며,
+실제 당도와 차이가 있을 수 있습니다.
+구매 결정 시 직접 확인하시기 바랍니다.
+"""
+```
+
+### 모델 한계
+
+- 학습 데이터 범위: 8.1-12.9 Brix
+- 수박 품종별 편차 가능
+- 환경적 요인 영향 (온도, 습도 등)
+
+## 🔄 지속적 개선 계획
+
+### 버전별 로드맵
+
+**v1.0**: 기본 당도 측정 기능
+**v1.1**: 측정 정확도 개선
+**v1.2**: 다양한 과일 지원
+**v1.3**: 소셜 기능 추가
+**v2.0**: Apple Watch 지원
+
+### 데이터 수집 (옵션)
+
+```swift
+struct AnonymousMetrics {
+    let measurementCount: Int
+    let averageProcessingTime: TimeInterval
+    let mostCommonSweetnessRange: SweetnessLevel
+    // 개인정보 제외, 성능 개선 목적
+}
+```
+
+---
+
+**이 규칙서를 준수하여 사용자 친화적이고 정확한 수박 당도 측정 iOS 앱을 개발하세요! 🍉📱**
+description:
+globs:
+alwaysApply: false
+
+---
