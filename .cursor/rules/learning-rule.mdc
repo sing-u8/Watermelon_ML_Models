@@ -1,0 +1,445 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+Read file: models/production/latest/MODEL_USAGE_GUIDE.md
+Read file: src/models/traditional_ml.py
+
+# �� 3가지 ML 모델 학습 목차 ��
+
+## **학습 목표**
+
+수박 당도 예측 프로젝트를 통해 **Gradient Boosting Trees**, **Support Vector Machine**, **Random Forest**의 핵심 개념과 실전 적용을 마스터하기
+
+---
+
+## **Phase 1: 기초 이론 및 환경 설정** (1-2주)
+
+### **1.1 머신러닝 기초 개념**
+
+- [ ] **회귀 vs 분류 문제의 이해**
+  - 연속값 예측 (당도: 8.1~12.9 Brix)
+  - 손실 함수: MAE, MSE, R²
+- [ ] **지도학습의 기본 원리**
+  - 특징(Feature)과 타겟(Target)의 관계
+  - 훈련/검증/테스트 데이터 분할
+- [ ] **과적합과 일반화**
+  - 편향-분산 트레이드오프
+  - 교차 검증의 중요성
+
+### **1.2 개발 환경 설정**
+
+- [ ] **Python 가상환경 구성**
+  ```bash
+  python -m venv watermelon_ml_env
+  source watermelon_ml_env/bin/activate
+  ```
+- [ ] **필수 라이브러리 설치**
+  ```bash
+  pip install scikit-learn pandas numpy matplotlib seaborn
+  pip install librosa soundfile joblib PyYAML
+  ```
+- [ ] **Jupyter Notebook 설정**
+  - `notebooks/01_ML_Basics.ipynb` 생성
+  - 기본 데이터 조작 연습
+
+### **1.3 데이터 이해**
+
+- [ ] **수박 당도 데이터셋 분석**
+  - 146개 오디오 파일, 50개 수박 샘플
+  - 당도 범위: 8.1~12.9 Brix
+- [ ] **오디오 신호 처리 기초**
+  - 샘플링 레이트, 진폭, 주파수
+  - librosa 라이브러리 기본 사용법
+
+---
+
+## 🤖 **Phase 2: 3가지 모델 기초 학습** (2-3주)
+
+### **2.1 Random Forest (랜덤 포레스트)**
+
+- [ ] **기본 개념 학습**
+  - 의사결정 트리의 한계
+  - 앙상블 학습의 원리
+  - 배깅(Bagging) vs 부스팅(Boosting)
+- [ ] **핵심 하이퍼파라미터 이해**
+  ```python
+  n_estimators=100      # 트리 개수
+  max_depth=None        # 트리 깊이
+  min_samples_split=2   # 분할 최소 샘플 수
+  random_state=42       # 재현성
+  ```
+- [ ] **실습: 기본 Random Forest 모델**
+  ```python
+  from sklearn.ensemble import RandomForestRegressor
+  rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+  rf_model.fit(X_train, y_train)
+  ```
+
+### **2.2 Gradient Boosting Trees (그래디언트 부스팅)**
+
+- [ ] **부스팅 알고리즘 이해**
+  - 순차적 학습의 원리
+  - 약한 학습기의 점진적 개선
+  - 손실 함수 최소화 과정
+- [ ] **핵심 하이퍼파라미터**
+  ```python
+  n_estimators=100    # 부스팅 단계 수
+  learning_rate=0.1   # 학습률 (shrinkage)
+  max_depth=3         # 각 트리의 깊이
+  subsample=1.0       # 샘플링 비율
+  ```
+- [ ] **실습: GBT 모델 구현**
+  ```python
+  from sklearn.ensemble import GradientBoostingRegressor
+  gbt_model = GradientBoostingRegressor(
+      n_estimators=100, learning_rate=0.1, max_depth=3
+  )
+  ```
+
+### **2.3 Support Vector Machine (서포트 벡터 머신)**
+
+- [ ] **SVM의 수학적 원리**
+  - 마진 최대화 개념
+  - 커널 트릭의 이해
+  - 고차원 공간에서의 분리
+- [ ] **회귀용 SVM (SVR)**
+  - ε-tube 개념
+  - 슬랙 변수와 정규화
+- [ ] **핵심 하이퍼파라미터**
+  ```python
+  kernel='rbf'         # 커널 함수
+  C=1.0               # 정규화 파라미터
+  gamma='scale'       # RBF 커널 파라미터
+  epsilon=0.1         # ε-tube 크기
+  ```
+- [ ] **실습: SVM 모델 구현**
+  ```python
+  from sklearn.svm import SVR
+  svm_model = SVR(kernel='rbf', C=1.0, gamma='scale')
+  ```
+
+---
+
+## **Phase 3: 프로젝트 코드 분석 및 실습** (2-3주)
+
+### **3.1 프로젝트 구조 이해**
+
+- [ ] **디렉토리 구조 분석**
+  ```
+  src/
+  ├── data/           # 데이터 처리
+  ├── models/         # 모델 클래스
+  ├── training/       # 훈련 파이프라인
+  └── evaluation/     # 성능 평가
+  ```
+- [ ] **설정 파일 분석**
+  - `configs/models.yaml`: 모델 하이퍼파라미터
+  - `configs/preprocessing.yaml`: 전처리 설정
+
+### **3.2 모델 클래스 분석**
+
+- [ ] **BaseWatermelonModel 추상 클래스**
+  ```python
+  # src/models/traditional_ml.py 분석
+  class BaseWatermelonModel(ABC):
+      def fit(self, X, y)
+      def predict(self, X)
+      def cross_validate(self, X, y)
+      def get_feature_importance(self)
+  ```
+- [ ] **각 모델 클래스 구현 분석**
+  - `WatermelonRandomForest`
+  - `WatermelonGBT`
+  - `WatermelonSVM`
+
+### **3.3 특징 추출 시스템 이해**
+
+- [ ] **51개 음향 특징 분석**
+  ```python
+  # src/data/feature_extractor.py
+  - MFCC 특성 (13개)
+  - 스펙트럴 특성 (7개)
+  - 에너지 특성 (4개)
+  - 리듬 특성 (3개)
+  - 수박 전용 특성 (8개)
+  - 통계적 특성 (16개)
+  ```
+- [ ] **특징 스케일링의 중요성**
+  - StandardScaler, MinMaxScaler
+  - SVM에서 스케일링이 중요한 이유
+
+---
+
+## **Phase 4: 실전 모델 훈련 및 비교** (2주)
+
+### **4.1 기본 모델 훈련**
+
+- [ ] **데이터 로딩 및 전처리**
+  ```python
+  # scripts/3_1_train_models.py 실행
+  python scripts/3_1_train_models.py
+  ```
+- [ ] **3개 모델 동시 훈련**
+  - Random Forest
+  - Gradient Boosting
+  - Support Vector Machine
+- [ ] **기본 성능 비교**
+  ```python
+  # 결과 분석
+  - MAE, MSE, R² 비교
+  - 훈련 시간 측정
+  - 특징 중요도 분석
+  ```
+
+### **4.2 교차 검증 실습**
+
+- [ ] **5-fold 교차 검증**
+  ```python
+  # 각 모델별 CV 성능
+  rf_cv_results = rf_model.cross_validate(X, y, cv=5)
+  gbt_cv_results = gbt_model.cross_validate(X, y, cv=5)
+  svm_cv_results = svm_model.cross_validate(X, y, cv=5)
+  ```
+- [ ] **성능 안정성 분석**
+  - 평균 ± 표준편차
+  - 과적합 여부 확인
+
+### **4.3 특징 중요도 분석**
+
+- [ ] **Random Forest 특징 중요도**
+  ```python
+  feature_importance = rf_model.get_feature_importance()
+  # 상위 20개 특징 시각화
+  ```
+- [ ] **Gradient Boosting 특징 중요도**
+- [ ] **특징 선택의 영향 분석**
+
+---
+
+## ⚙️ **Phase 5: 고급 최적화 기법** (2-3주)
+
+### **5.1 하이퍼파라미터 튜닝**
+
+- [ ] **GridSearchCV vs RandomizedSearchCV**
+
+  ```python
+  # src/training/hyperparameter_tuner.py 분석
+  from sklearn.model_selection import GridSearchCV
+
+  param_grid = {
+      'n_estimators': [100, 200, 300],
+      'max_depth': [3, 5, 7, None],
+      'learning_rate': [0.01, 0.1, 0.2]
+  }
+  ```
+
+- [ ] **각 모델별 최적 파라미터 탐색**
+- [ ] **튜닝 결과 분석 및 비교**
+
+### **5.2 특징 선택 기법**
+
+- [ ] **Recursive Feature Elimination (RFE)**
+
+  ```python
+  from sklearn.feature_selection import RFE
+
+  # Progressive Feature Selection
+  # 51개 → 10개 특징으로 축소
+  ```
+
+- [ ] **특징 중요도 기반 선택**
+- [ ] **차원 축소의 성능 영향**
+
+### **5.3 앙상블 방법론**
+
+- [ ] **Voting Regressor**
+
+  ```python
+  from sklearn.ensemble import VotingRegressor
+
+  ensemble = VotingRegressor([
+      ('rf', rf_model),
+      ('gbt', gbt_model),
+      ('svm', svm_model)
+  ])
+  ```
+
+- [ ] **가중 평균 앙상블**
+- [ ] **Stacking 앙상블**
+  ```python
+  # 메타 모델을 통한 고차원 앙상블
+  meta_model = LinearRegression()
+  ```
+
+---
+
+## **Phase 6: 성능 분석 및 최적화** (1-2주)
+
+### **6.1 최종 성능 비교**
+
+- [ ] **테스트 세트에서의 성능**
+  ```python
+  # 최종 결과 분석
+  | 모델 | MAE | R² | RMSE |
+  |------|-----|----|----|
+  | Random Forest | 0.133 | 0.983 | 0.151 |
+  | Gradient Boosting | 0.143 | 0.978 | 0.174 |
+  | SVM | 0.242 | 0.928 | 0.314 |
+  ```
+- [ ] **목표 달성도 확인**
+  - MAE < 1.0 Brix ✅ (0.133 달성)
+  - R² > 0.8 ✅ (0.983 달성)
+
+### **6.2 에러 분석**
+
+- [ ] **잔차 분석**
+  ```python
+  # 예측값 vs 실제값 산점도
+  # 잔차 플롯 분석
+  ```
+- [ ] **당도 구간별 성능**
+- [ ] **실패 사례 분석**
+
+### **6.3 모델 해석**
+
+- [ ] **특징 중요도 시각화**
+- [ ] **SHAP 값 분석 (선택사항)**
+- [ ] **모델 의사결정 과정 이해**
+
+---
+
+## **Phase 7: 모델 배포 및 실무 적용** (1주)
+
+### **7.1 모델 저장 및 로드**
+
+- [ ] **joblib을 통한 모델 직렬화**
+
+  ```python
+  import joblib
+
+  # 모델 저장
+  joblib.dump(model, 'watermelon_model.pkl')
+
+  # 모델 로드
+  model = joblib.load('watermelon_model.pkl')
+  ```
+
+- [ ] **스케일러와 함께 저장**
+- [ ] **모델 메타데이터 관리**
+
+### **7.2 추론 파이프라인 구축**
+
+- [ ] **완전한 예측 함수 구현**
+  ```python
+  def predict_watermelon_sweetness(audio_file_path):
+      # 1. 오디오 로드
+      # 2. 특징 추출
+      # 3. 스케일링
+      # 4. 예측
+      # 5. 결과 반환
+  ```
+- [ ] **배치 예측 시스템**
+- [ ] **에러 처리 및 로깅**
+
+### **7.3 모델 변환 (선택사항)**
+
+- [ ] **ONNX 변환**
+
+  ```python
+  # scikit-learn → ONNX
+  import skl2onnx
+
+  onx = skl2onnx.convert_sklearn(model)
+  ```
+
+- [ ] **Core ML 변환 (iOS 배포)**
+- [ ] **모바일 성능 최적화**
+
+---
+
+## **Phase 8: 심화 학습 및 프로젝트 완성** (1주)
+
+### **8.1 추가 학습 주제**
+
+- [ ] **통계적 유의성 검정**
+
+  ```python
+  from scipy.stats import ttest_rel
+
+  # 모델간 성능 차이 검정
+  t_stat, p_value = ttest_rel(rf_scores, gbt_scores)
+  ```
+
+- [ ] **예측 구간 (Prediction Intervals)**
+- [ ] **모델 불확실성 정량화**
+
+### **8.2 프로젝트 문서화**
+
+- [ ] **최종 보고서 작성**
+- [ ] **코드 문서화 완성**
+- [ ] **프레젠테이션 자료 준비**
+
+### **8.3 향후 개선 방향**
+
+- [ ] **더 많은 데이터 수집**
+- [ ] **딥러닝 모델과의 비교**
+- [ ] **실시간 시스템 구축**
+
+---
+
+## 🎯 **학습 체크리스트**
+
+### **기초 개념 마스터**
+
+- [ ] 회귀 문제의 이해
+- [ ] 3가지 모델의 수학적 원리
+- [ ] 하이퍼파라미터의 역할
+- [ ] 교차 검증의 중요성
+
+### **실전 코딩 능력**
+
+- [ ] scikit-learn API 숙지
+- [ ] 데이터 전처리 파이프라인
+- [ ] 모델 훈련 및 평가
+- [ ] 성능 시각화
+
+### **고급 기법 적용**
+
+- [ ] 하이퍼파라미터 튜닝
+- [ ] 특징 선택 기법
+- [ ] 앙상블 방법론
+- [ ] 모델 배포 및 최적화
+
+### **프로젝트 완성도**
+
+- [ ] 목표 성능 달성 (MAE < 1.0)
+- [ ] 완전한 파이프라인 구축
+- [ ] 문서화 및 코드 품질
+- [ ] 실무 적용 가능성
+
+---
+
+## **학습 팁**
+
+### **단계별 접근**
+
+1. **이론 → 실습 → 분석** 순서로 진행
+2. 각 모델을 개별적으로 완전히 이해한 후 비교
+3. 코드를 직접 실행하고 결과를 분석
+
+### **실습 중심 학습**
+
+- Jupyter Notebook에서 단계별 실습
+- 하이퍼파라미터를 바꿔가며 성능 변화 관찰
+- 시각화를 통한 직관적 이해
+
+### **성과 측정**
+
+- 각 Phase 완료 후 자체 평가
+- 목표 성능 달성도 확인
+- 코드 품질 및 이해도 점검
+
+이 목차를 따라 학습하시면 **3가지 전통적인 ML 모델의 핵심 개념부터 실무 적용까지** 체계적으로 마스터할 수 있습니다! 🚀
