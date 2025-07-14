@@ -1,0 +1,16 @@
+{
+  "features": [
+    "harmonic_ratio",
+    "rmse_energy",
+    "mel_spec_q75",
+    "mel_spec_energy",
+    "mel_spec_skewness",
+    "fundamental_frequency",
+    "tempo",
+    "roughness",
+    "mel_spec_crest_factor",
+    "peak_energy",
+    "mfcc_3"
+  ],
+  "count": 11
+}
