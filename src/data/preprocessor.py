@@ -65,7 +65,7 @@ class AudioPreprocessor:
         """기본 설정 반환"""
         return {
             'audio': {
-                'sample_rate': 22050,
+                'sample_rate': 16000,
                 'trim': {
                     'enabled': True,
                     'top_db': 20,
@@ -464,7 +464,7 @@ if __name__ == "__main__":
     preprocessor = AudioPreprocessor(config_path=config_path)
     
     # 테스트용 신호 생성
-    sample_rate = 22050
+    sample_rate = 16000
     duration = 2.0
     t = np.linspace(0, duration, int(sample_rate * duration))
     

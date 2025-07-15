@@ -65,7 +65,7 @@ WatermelonSweetnessApp/
 // 녹음 설정 표준
 let audioSettings: [String: Any] = [
     AVFormatIDKey: kAudioFormatLinearPCM,
-    AVSampleRateKey: 22050.0,          // ML 모델 학습 시 사용한 샘플링 레이트
+    AVSampleRateKey: 16000.0,          // ML 모델 학습 시 사용한 샘플링 레이트
     AVNumberOfChannelsKey: 1,          // 모노 채널
     AVLinearPCMBitDepthKey: 16,
     AVLinearPCMIsFloatKey: false,

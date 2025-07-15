@@ -1,0 +1,10 @@
+energy_entropy
+spectral_bandwidth
+mfcc_11
+tempo
+mfcc_12
+mfcc_10
+harmonic_ratio
+mel_spec_kurtosis
+mfcc_6
+spectral_contrast

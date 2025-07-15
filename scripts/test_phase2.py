@@ -29,12 +29,12 @@ def test_audio_loader():
     """AudioLoader 테스트"""
     logger.info("=== AudioLoader 테스트 시작 ===")
     
-    loader = AudioLoader(sample_rate=22050, mono=True)
+    loader = AudioLoader(sample_rate=16000, mono=True)
     logger.info(f"AudioLoader 생성: {loader}")
     
     # 테스트 오디오 생성 (사인파)
     duration = 2.0  # 2초
-    sample_rate = 22050
+    sample_rate = 16000
     frequency = 440  # A4 음
     t = np.linspace(0, duration, int(sample_rate * duration), False)
     test_audio = np.sin(2 * np.pi * frequency * t)
@@ -80,7 +80,7 @@ def test_audio_preprocessor():
         
         # 테스트 오디오 생성 (노이즈 포함)
         duration = 3.0
-        sample_rate = 22050
+        sample_rate = 16000
         t = np.linspace(0, duration, int(sample_rate * duration), False)
         
         # 신호 + 노이즈
@@ -121,7 +121,7 @@ def test_feature_extractor():
         
         # 테스트 오디오 생성 (좀 더 복잡한 신호)
         duration = 2.0
-        sample_rate = 22050
+        sample_rate = 16000
         t = np.linspace(0, duration, int(sample_rate * duration), False)
         
         # 복합 신호 (하모닉 + 노이즈)
@@ -167,7 +167,7 @@ def test_full_pipeline():
         test_dir.mkdir(exist_ok=True)
         
         # 여러 개의 테스트 오디오 파일 생성
-        sample_rate = 22050
+        sample_rate = 16000
         duration = 1.5
         
         for i in range(3):
@@ -184,7 +184,7 @@ def test_full_pipeline():
         logger.info("전체 파이프라인 실행 중...")
         
         # 1. AudioLoader
-        loader = AudioLoader(sample_rate=22050, mono=True)
+        loader = AudioLoader(sample_rate=16000, mono=True)
         
         # 2. AudioPreprocessor
         config_path = project_root / 'configs' / 'preprocessing.yaml'

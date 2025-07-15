@@ -3,7 +3,7 @@
 
 audio:
   # 기본 오디오 설정
-  sample_rate: 22050              # 샘플링 레이트 (Hz)
+  sample_rate: 16000              # 샘플링 레이트 (Hz) - 22050에서 16000으로 변경
   duration: null                  # 오디오 길이 제한 (초, null=전체 길이)
   mono: true                      # 모노 변환 여부
   

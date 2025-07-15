@@ -40,7 +40,7 @@ class DatasetBuilder:
             config_path (Optional[Union[str, Path]]): 설정 파일 경로
         """
         self.config_path = config_path
-        self.audio_loader = AudioLoader(sample_rate=22050, mono=True)
+        self.audio_loader = AudioLoader(sample_rate=16000, mono=True)
         self.preprocessor = AudioPreprocessor(config_path=config_path)
         self.feature_extractor = AudioFeatureExtractor(config_path=config_path)
         

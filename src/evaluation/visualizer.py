@@ -17,10 +17,17 @@ from typing import Dict, Any, List, Tuple, Optional, Union
 from pathlib import Path
 import logging
 from datetime import datetime
+import platform
+from matplotlib import font_manager, rc
 
-# 한글 폰트 설정 (한국어 지원)
-plt.rcParams['font.family'] = ['Arial Unicode MS', 'Malgun Gothic', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
+if platform.system() == 'Darwin':  # macOS
+    rc('font', family='AppleGothic')
+elif platform.system() == 'Windows':
+    rc('font', family='Malgun Gothic')
+else:  # Linux 등
+    rc('font', family='NanumGothic')
+
+plt.rcParams['axes.unicode_minus'] = False  # 마이너스 깨짐 방지
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)

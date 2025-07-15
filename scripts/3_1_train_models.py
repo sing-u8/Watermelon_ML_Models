@@ -497,6 +497,46 @@ def main():
         training_summary = training_results.get_summary()
         save_training_results(all_results, training_summary, config)
         
+        # === 🔗 호환성 요약 파일 생성 (후속 스크립트 연동용) ===
+        logger.info("후속 스크립트 호환성을 위한 요약 파일 생성 중...")
+        try:
+            # 테스트 성능을 3_simple_train.py 형식으로 변환
+            compatible_test_performance = {}
+            for model_name, results in all_results.items():
+                test_result = results['test']
+                metrics = test_result['metrics'] if isinstance(test_result, dict) else test_result
+                
+                # numpy 객체를 float로 안전하게 변환
+                mae = float(metrics.get('mae', 0)) if hasattr(metrics.get('mae', 0), 'item') else float(metrics.get('mae', 0))
+                r2 = float(metrics.get('r2', 0)) if hasattr(metrics.get('r2', 0), 'item') else float(metrics.get('r2', 0))
+                mse = float(metrics.get('mse', 0)) if hasattr(metrics.get('mse', 0), 'item') else float(metrics.get('mse', 0))
+                
+                compatible_test_performance[model_name] = {
+                    'mae': mae,
+                    'r2': r2,
+                    'mse': mse
+                }
+            
+            # 3_simple_train.py 호환 형식으로 저장
+            compatible_summary = {
+                'test_performance': compatible_test_performance,
+                'timestamp': datetime.now().isoformat(),
+                'source': '3_1_train_models.py'  # 출처 명시
+            }
+            
+            # models/saved/training_summary_simple.yaml 생성
+            saved_dir = PROJECT_ROOT / "models" / "saved"
+            saved_dir.mkdir(parents=True, exist_ok=True)
+            
+            compatible_file = saved_dir / "training_summary_simple.yaml"
+            with open(compatible_file, 'w', encoding='utf-8') as f:
+                yaml.dump(compatible_summary, f, default_flow_style=False, allow_unicode=True)
+            
+            logger.info(f"✅ 호환성 요약 파일 생성 완료: {compatible_file}")
+            
+        except Exception as e:
+            logger.warning(f"호환성 요약 파일 생성 실패: {e}")
+        
         # 완료 메시지
         print("\n🎉 모델 훈련 및 평가 완료!")
         print(f"📁 결과 파일: experiments/results/")

@@ -837,7 +837,7 @@ if __name__ == "__main__":
         print(f"  - {group_name}: {len(features)}개")
     
     # 테스트용 신호 생성
-    sample_rate = 22050
+    sample_rate = 16000
     duration = 2.0
     t = np.linspace(0, duration, int(sample_rate * duration))
     

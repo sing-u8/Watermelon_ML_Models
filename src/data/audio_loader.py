@@ -25,12 +25,12 @@ class AudioLoader:
     
     SUPPORTED_FORMATS = {'.wav', '.mp3', '.m4a', '.flac', '.aiff', '.ogg'}
     
-    def __init__(self, sample_rate: int = 22050, mono: bool = True):
+    def __init__(self, sample_rate: int = 16000, mono: bool = True):
         """
         AudioLoader 초기화
         
         Args:
-            sample_rate (int): 목표 샘플링 레이트 (기본값: 22050)
+            sample_rate (int): 목표 샘플링 레이트 (기본값: 16000)
             mono (bool): 모노 변환 여부 (기본값: True)
         """
         self.sample_rate = sample_rate
@@ -268,7 +268,7 @@ class AudioLoader:
 
 # 편의 함수들
 def load_audio_file(file_path: Union[str, Path], 
-                   sample_rate: int = 22050, 
+                   sample_rate: int = 16000, 
                    mono: bool = True,
                    duration: Optional[float] = None) -> Tuple[np.ndarray, int]:
     """
@@ -303,7 +303,7 @@ if __name__ == "__main__":
     
     if data_dir.exists():
         # AudioLoader 테스트
-        loader = AudioLoader(sample_rate=22050, mono=True)
+        loader = AudioLoader(sample_rate=16000, mono=True)
         
         # 모든 오디오 파일 찾기
         audio_files = []

@@ -14,7 +14,7 @@ from typing import Tuple, List
 import random
 
 # 설정 상수
-SAMPLE_RATE = 22050  # 22kHz 샘플링 레이트
+SAMPLE_RATE = 16000  # 22kHz 샘플링 레이트 → 16kHz 샘플링 레이트
 DURATION = 2.0  # 2초 길이
 BASE_FREQUENCY = 100  # 기본 주파수 (Hz)
 NUM_WATERMELONS = 50  # 생성할 수박 샘플 수

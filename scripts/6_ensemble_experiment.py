@@ -130,6 +130,73 @@ def create_ensemble_config() -> dict:
     return config
 
 
+def load_tuned_hyperparameters() -> dict | None:
+    """하이퍼파라미터 튜닝 결과에서 최적 파라미터를 로드합니다."""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # 하이퍼파라미터 튜닝 결과 디렉토리 찾기
+        hp_dir = PROJECT_ROOT / "experiments" / "hyperparameter_tuning"
+        if not hp_dir.exists():
+            logger.warning("하이퍼파라미터 튜닝 결과 디렉토리가 없습니다. 기본값을 사용합니다.")
+            return None
+            
+        # 최신 튜닝 결과 찾기 (시간순 정렬)
+        hp_experiments = [d for d in hp_dir.iterdir() if d.is_dir()]
+        if not hp_experiments:
+            logger.warning("하이퍼파라미터 튜닝 결과가 없습니다. 기본값을 사용합니다.")
+            return None
+            
+        # simple_tuning_ 패턴 우선 선택
+        simple_tuning_dirs = [d for d in hp_experiments if d.name.startswith('simple_tuning_')]
+        if simple_tuning_dirs:
+            # 시간순 정렬
+            simple_tuning_dirs.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            latest_hp = simple_tuning_dirs[0]
+        else:
+            # fallback: 가장 최근 디렉토리
+            hp_experiments.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            latest_hp = hp_experiments[0]
+        
+        logger.info(f"하이퍼파라미터 튜닝 결과 로드: {latest_hp.name}")
+        
+        # tuning_results.yaml에서 최적 파라미터 로드 (올바른 파일)
+        tuning_file = latest_hp / "tuning_results.yaml"
+        if tuning_file.exists():
+            try:
+                with open(tuning_file, 'r', encoding='utf-8') as f:
+                    tuning_results = yaml.safe_load(f)
+            except yaml.constructor.ConstructorError:
+                logger.info("tuning_results.yaml에 numpy 객체가 포함되어 있어 unsafe_load를 사용합니다.")
+                with open(tuning_file, 'r', encoding='utf-8') as f:
+                    tuning_results = yaml.unsafe_load(f)
+            
+            # 최적 하이퍼파라미터 추출
+            tuned_params = {}
+            for model_name, results in tuning_results.items():
+                if isinstance(results, dict) and 'best_params' in results:
+                    best_params = results['best_params']
+                    # numpy 값들을 일반 Python 타입으로 변환
+                    converted_params = {}
+                    for key, value in best_params.items():
+                        if hasattr(value, 'item'):  # numpy scalar
+                            converted_params[key] = value.item()
+                        else:
+                            converted_params[key] = value
+                    tuned_params[model_name] = converted_params
+                    
+            if tuned_params:
+                logger.info(f"✅ 튜닝된 하이퍼파라미터 로드 완료: {list(tuned_params.keys())}")
+                return tuned_params
+        
+        logger.warning("유효한 하이퍼파라미터 튜닝 결과를 찾을 수 없습니다. 기본값을 사용합니다.")
+        return None
+        
+    except Exception as e:
+        logger.warning(f"하이퍼파라미터 로드 실패: {e}. 기본값을 사용합니다.")
+        return None
+
+
 def evaluate_individual_models(X_train: np.ndarray, y_train: np.ndarray,
                               X_val: np.ndarray, y_val: np.ndarray,
                               X_test: np.ndarray, y_test: np.ndarray) -> dict:
@@ -139,34 +206,69 @@ def evaluate_individual_models(X_train: np.ndarray, y_train: np.ndarray,
     
     from src.models.traditional_ml import WatermelonRandomForest, WatermelonGBT, WatermelonSVM
     
-    # Initialize models with optimized hyperparameters in config format
-    rf_config = {
-        'model': {
-            'n_estimators': 200,
-            'max_depth': 15,
-            'min_samples_split': 2,
-            'min_samples_leaf': 1,
-            'max_features': 'sqrt'
-        }
-    }
+    # 🔗 하이퍼파라미터 튜닝 결과 로드
+    tuned_params = load_tuned_hyperparameters()
     
-    gbt_config = {
-        'model': {
-            'n_estimators': 200,
-            'learning_rate': 0.1,
-            'max_depth': 6,
-            'subsample': 0.8
+    if tuned_params:
+        logger.info("✅ 튜닝된 하이퍼파라미터를 사용합니다.")
+        # 튜닝 결과에서 최적 파라미터 사용
+        rf_config = {
+            'model': tuned_params.get('random_forest', {
+                'n_estimators': 200,
+                'max_depth': 15,
+                'min_samples_split': 2,
+                'min_samples_leaf': 1,
+                'max_features': 'sqrt'
+            })
         }
-    }
-    
-    svm_config = {
-        'model': {
-            'kernel': 'rbf',
-            'C': 10,
-            'gamma': 'scale',
-            'epsilon': 0.01
+        
+        gbt_config = {
+            'model': tuned_params.get('gradient_boosting', {
+                'n_estimators': 200,
+                'learning_rate': 0.1,
+                'max_depth': 6,
+                'subsample': 0.8
+            })
         }
-    }
+        
+        svm_config = {
+            'model': tuned_params.get('svm', {
+                'kernel': 'rbf',
+                'C': 10,
+                'gamma': 'scale',
+                'epsilon': 0.01
+            })
+        }
+    else:
+        logger.warning("⚠️  튜닝 결과가 없어 기본 하이퍼파라미터를 사용합니다.")
+        # 기본 하이퍼파라미터 (fallback)
+        rf_config = {
+            'model': {
+                'n_estimators': 200,
+                'max_depth': 15,
+                'min_samples_split': 2,
+                'min_samples_leaf': 1,
+                'max_features': 'sqrt'
+            }
+        }
+        
+        gbt_config = {
+            'model': {
+                'n_estimators': 200,
+                'learning_rate': 0.1,
+                'max_depth': 6,
+                'subsample': 0.8
+            }
+        }
+        
+        svm_config = {
+            'model': {
+                'kernel': 'rbf',
+                'C': 10,
+                'gamma': 'scale',
+                'epsilon': 0.01
+            }
+        }
     
     models = {
         'Random Forest': WatermelonRandomForest(config=rf_config, random_state=42),
