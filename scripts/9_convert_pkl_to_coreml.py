@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-🍉 수박 당도 예측 모델 - PKL → Core ML 직접 변환 스크립트
+🍉 수박 음 높낮이 분류 모델 - PKL → Core ML 직접 변환 스크립트
 
-scikit-learn 모델을 ONNX를 거치지 않고 직접 Core ML(.mlmodel)로 변환합니다.
+scikit-learn 분류 모델을 ONNX를 거치지 않고 직접 Core ML(.mlmodel)로 변환합니다.
 """
 
 import os
@@ -36,8 +36,9 @@ def load_model_and_metadata():
     base_path = Path(__file__).parent.parent / "models" / "production" / "latest"
     
     # 모델 파일 로드
-    model_path = base_path / "watermelon_sweetness_model.pkl"
+    model_path = base_path / "watermelon_pitch_model.pkl"
     scaler_path = base_path / "feature_scaler.pkl"
+    label_encoder_path = base_path / "label_encoder.pkl"
     features_path = base_path / "selected_features.json"
     
     if not model_path.exists():
@@ -51,15 +52,20 @@ def load_model_and_metadata():
     scaler = joblib.load(scaler_path)
     print(f"✅ 스케일러 로드 완료: {type(scaler).__name__}")
     
+    # 라벨 인코더 로드
+    label_encoder = joblib.load(label_encoder_path)
+    print(f"✅ 라벨 인코더 로드 완료: {type(label_encoder).__name__}")
+    print(f"   클래스: {label_encoder.classes_}")
+    
     # 특징 리스트 로드
     with open(features_path, 'r', encoding='utf-8') as f:
         features_data = json.load(f)
     feature_names = features_data['features']
     print(f"✅ 특징 정보 로드 완료: {len(feature_names)}개 특징")
     
-    return model, scaler, feature_names
+    return model, scaler, label_encoder, feature_names
 
-def convert_sklearn_to_coreml(model, feature_names, output_name="sweetness_prediction"):
+def convert_sklearn_to_coreml(model, feature_names, output_name="pitch_prediction"):
     """scikit-learn 모델을 Core ML로 직접 변환합니다."""
     print(f"\n🔄 {type(model).__name__} 모델을 Core ML로 변환 중...")
     
@@ -93,7 +99,7 @@ def add_model_metadata(coreml_model, feature_names):
     # 기본 모델 정보
     coreml_model.author = "WatermelonML Team"
     coreml_model.license = "MIT"
-    coreml_model.short_description = "수박 소리 기반 당도 예측 모델 (Progressive Feature Selection)"
+    coreml_model.short_description = "수박 소리 기반 음 높낮이 분류 모델 (Progressive Feature Selection)"
     coreml_model.version = "1.0.0"
     
     # 입력 특징 설명
@@ -117,7 +123,7 @@ def add_model_metadata(coreml_model, feature_names):
             coreml_model.input_description[feature_name] = f"오디오 특징: {feature_name}"
     
     # 출력 설명
-    coreml_model.output_description['sweetness_prediction'] = "예측된 수박 당도 (Brix 단위, 범위: 8.0-13.0)"
+    coreml_model.output_description['pitch_prediction'] = "예측된 음 높낮이 (0: low, 1: high)"
     
     print("✅ 메타데이터 추가 완료")
 
@@ -146,10 +152,10 @@ def test_coreml_model(coreml_model, feature_names):
             
             # 예측 시도
             prediction = coreml_model.predict(test_input)
-            predicted_sweetness = prediction['sweetness_prediction']
+            predicted_pitch = prediction['pitch_prediction']
             
             print(f"✅ Core ML 런타임 테스트 성공!")
-            print(f"   테스트 예측값: {predicted_sweetness:.2f} Brix")
+            print(f"   테스트 예측값: {predicted_pitch} (0: low, 1: high)")
             
         except Exception as runtime_error:
             print(f"ℹ️  Core ML 런타임 테스트 건너뜀: {runtime_error}")
@@ -170,7 +176,7 @@ def save_coreml_model(coreml_model, output_dir):
     output_path.mkdir(parents=True, exist_ok=True)
     
     # Core ML 모델 파일 경로
-    model_filename = "watermelon_sweetness_predictor.mlmodel"
+    model_filename = "watermelon_pitch_classifier.mlmodel"
     model_path = output_path / model_filename
     
     try:
@@ -191,14 +197,14 @@ def create_integration_guide(output_dir, model_path, feature_names):
     """iOS 통합 가이드를 생성합니다."""
     print("\n🔄 iOS 통합 가이드 생성 중...")
     
-    guide_content = f"""# 🍉 수박 당도 예측 Core ML 모델 - iOS 통합 가이드
+    guide_content = f"""# 🍉 수박 음 높낮이 분류 Core ML 모델 - iOS 통합 가이드
 
 ## 모델 정보
 - **모델 파일**: `{Path(model_path).name}`
 - **변환 방법**: scikit-learn → Core ML (직접 변환)
 - **입력 특징 수**: {len(feature_names)}개
-- **출력**: 당도 예측값 (Brix 단위)
-- **성능**: MAE 0.0974 Brix, R² 0.9887
+- **출력**: 음 높낮이 분류 (0: low, 1: high)
+- **성능**: 정확도 94.74%, F1-score 94.71%
 
 ## iOS 프로젝트에 모델 추가하기
 
@@ -218,28 +224,28 @@ import CoreML
 import CoreML
 import Foundation
 
-class WatermelonSweetnessPredictor {{
-    private var model: watermelon_sweetness_predictor?
+class WatermelonPitchClassifier {{
+    private var model: watermelon_pitch_classifier?
     
     init() {{
         loadModel()
     }}
     
     private func loadModel() {{
-        guard let modelURL = Bundle.main.url(forResource: "watermelon_sweetness_predictor", withExtension: "mlmodel") else {{
+        guard let modelURL = Bundle.main.url(forResource: "watermelon_pitch_classifier", withExtension: "mlmodel") else {{
             print("모델 파일을 찾을 수 없습니다.")
             return
         }}
         
         do {{
-            self.model = try watermelon_sweetness_predictor(contentsOf: modelURL)
+            self.model = try watermelon_pitch_classifier(contentsOf: modelURL)
             print("모델 로드 성공!")
         }} catch {{
             print("모델 로드 실패: \\(error)")
         }}
     }}
     
-    func predictSweetness(audioFeatures: [String: Double]) -> Double? {{
+    func predictPitch(audioFeatures: [String: Double]) -> Int? {{
         guard let model = self.model else {{
             print("모델이 로드되지 않았습니다.")
             return nil
@@ -247,30 +253,43 @@ class WatermelonSweetnessPredictor {{
         
         do {{
             // 입력 특징 준비
-            let input = watermelon_sweetness_predictorInput(
+            let input = watermelon_pitch_classifierInput(
 {chr(10).join(f'                {feature_name}: audioFeatures["{feature_name}"] ?? 0.0' for feature_name in feature_names)}
             )
             
             // 예측 수행
             let output = try model.prediction(input: input)
-            return output.sweetness_prediction
+            return output.pitch_prediction
             
         }} catch {{
-            print("예측 실패: \\(error)")
+            print("분류 실패: \\(error)")
             return nil
         }}
+    }}
+    
+    func predictPitchLabel(audioFeatures: [String: Double]) -> String? {{
+        guard let pitchValue = predictPitch(audioFeatures: audioFeatures) else {{
+            return nil
+        }}
+        
+        // 숫자를 라벨로 변환
+        return pitchValue == 0 ? "low" : "high"
     }}
 }}
 
 // 사용 예제
-let predictor = WatermelonSweetnessPredictor()
+let classifier = WatermelonPitchClassifier()
 
 let audioFeatures: [String: Double] = [
 {chr(10).join(f'    "{feature_name}": 0.0,  // 실제 오디오에서 추출한 값' for feature_name in feature_names)}
 ]
 
-if let sweetness = predictor.predictSweetness(audioFeatures: audioFeatures) {{
-    print("예측된 당도: \\(sweetness) Brix")
+if let pitchValue = classifier.predictPitch(audioFeatures: audioFeatures) {{
+    print("예측된 음 높낮이 값: \\(pitchValue) (0: low, 1: high)")
+}}
+
+if let pitchLabel = classifier.predictPitchLabel(audioFeatures: audioFeatures) {{
+    print("예측된 음 높낮이: \\(pitchLabel)")
 }}
 ```
 
@@ -288,9 +307,9 @@ if let sweetness = predictor.predictSweetness(audioFeatures: audioFeatures) {{
 
 ## 성능 정보
 
-- **정확도**: MAE 0.0974 Brix (목표 대비 1,026% 달성)
-- **설명력**: R² 0.9887 (98.87% 분산 설명)
-- **추론 속도**: < 1ms (실시간 예측 가능)
+- **정확도**: 94.74% (목표 90% 대비 4.7% 초과)
+- **F1-score**: 94.71% (목표 85% 대비 9.7% 초과)
+- **추론 속도**: < 1ms (실시간 분류 가능)
 - **모델 크기**: 경량화된 모델
 
 ## 문의사항
@@ -311,7 +330,7 @@ def main():
     
     try:
         # 1. 모델 및 메타데이터 로드
-        model, scaler, feature_names = load_model_and_metadata()
+        model, scaler, label_encoder, feature_names = load_model_and_metadata()
         
         # 2. scikit-learn → Core ML 직접 변환
         coreml_model = convert_sklearn_to_coreml(model, feature_names)
@@ -339,7 +358,7 @@ def main():
             print("\n" + "=" * 60)
             print("✅ PKL → Core ML 직접 변환 완료!")
             print(f"📱 Core ML 모델: {model_path}")
-            print("🔧 스케일러는 별도로 iOS에서 구현해야 합니다.")
+            print("🔧 스케일러와 라벨 인코더는 별도로 iOS에서 구현해야 합니다.")
             print("📖 iOS_Integration_Guide.md를 참고하세요.")
             print("ℹ️  Python 환경에서 Core ML 런타임 테스트는 제한적이지만,")
             print("   실제 iOS 기기에서는 정상 작동합니다!")

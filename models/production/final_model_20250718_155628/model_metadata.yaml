@@ -1,0 +1,56 @@
+data_info:
+  feature_count: 10
+  feature_selection_method: progressive_selection
+  scaling_method: StandardScaler
+  selected_features:
+  - mfcc_12
+  - mfcc_7
+  - mel_spec_energy
+  - mel_spec_entropy
+  - inharmonicity
+  - mfcc_13
+  - mfcc_10
+  - roughness
+  - mfcc_8
+  - mel_spec_rms
+  target_variable: pitch_label
+deployment_info:
+  input_shape:
+  - 10
+  mobile_ready: true
+  output_shape:
+  - 1
+  preprocessing_required: true
+  scaling_required: true
+  supported_formats:
+  - pkl
+  - joblib
+goals_achieved:
+  accuracy_achieved: 0.9473684210526315
+  accuracy_excess: 0.047368421052631504
+  accuracy_goal: 0.9
+  f1_achieved: 0.9470735662686127
+  f1_excess: 0.09707356626861274
+  f1_goal: 0.85
+model_config:
+  max_depth: 15
+  max_features: sqrt
+  min_samples_leaf: 1
+  min_samples_split: 2
+  n_estimators: 200
+  random_state: 42
+model_info:
+  algorithm: Progressive Feature Selection + Random Forest
+  author: Watermelon ML Project Team
+  creation_date: '2025-07-18T15:56:28.999120'
+  name: WatermelonPitchClassificationModel
+  type: RandomForestClassifier
+  version: 1.0.0
+performance:
+  test_accuracy: 0.9473684210526315
+  test_f1_score: 0.9470735662686127
+  test_macro_f1: 0.9467787114845938
+  test_micro_f1: 0.9473684210526315
+  test_precision: 0.9521531100478469
+  test_recall: 0.9473684210526315
+  test_samples: 19

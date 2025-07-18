@@ -23,7 +23,8 @@ import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report
+from sklearn.preprocessing import LabelEncoder
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -73,7 +74,7 @@ def load_data() -> tuple:
         train_df = pd.read_csv(PROJECT_ROOT / "data" / "splits" / "full_dataset" / "train.csv")
         val_df = pd.read_csv(PROJECT_ROOT / "data" / "splits" / "full_dataset" / "val.csv")
         test_df = pd.read_csv(PROJECT_ROOT / "data" / "splits" / "full_dataset" / "test.csv")
-        selected_features = [col for col in train_df.columns if col != 'sweetness']
+        selected_features = [col for col in train_df.columns if col != 'pitch_label']
     else:
         # Load selected features
         with open(best_features_file, 'r', encoding='utf-8') as f:
@@ -86,22 +87,24 @@ def load_data() -> tuple:
         val_df = pd.read_csv(PROJECT_ROOT / "data" / "splits" / "full_dataset" / "val.csv")
         test_df = pd.read_csv(PROJECT_ROOT / "data" / "splits" / "full_dataset" / "test.csv")
     
+    # 라벨 인코딩
+    label_encoder = LabelEncoder()
+    
     # Extract features and targets
     X_train = train_df[selected_features].values
-    y_train = train_df['sweetness'].values
+    y_train = label_encoder.fit_transform(train_df['pitch_label'].values)
     
     X_val = val_df[selected_features].values
-    y_val = val_df['sweetness'].values
+    y_val = label_encoder.transform(val_df['pitch_label'].values)
     
     X_test = test_df[selected_features].values
-    y_test = test_df['sweetness'].values
+    y_test = label_encoder.transform(test_df['pitch_label'].values)
     
     logger.info(f"데이터 형태 - Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
-    logger.info(f"당도 범위 - Train: {y_train.min():.1f}~{y_train.max():.1f}, "
-                f"Val: {y_val.min():.1f}~{y_val.max():.1f}, "
-                f"Test: {y_test.min():.1f}~{y_test.max():.1f}")
+    logger.info(f"클래스 분포 - Train: {np.bincount(y_train)}, Val: {np.bincount(y_val)}, Test: {np.bincount(y_test)}")
+    logger.info(f"클래스 매핑: {dict(zip(label_encoder.classes_, range(len(label_encoder.classes_))))}")
     
-    return X_train, y_train, X_val, y_val, X_test, y_test, selected_features
+    return X_train, y_train, X_val, y_val, X_test, y_test, selected_features, label_encoder
 
 
 def scale_features(X_train: np.ndarray, X_val: np.ndarray, X_test: np.ndarray) -> tuple:
@@ -289,20 +292,20 @@ def evaluate_individual_models(X_train: np.ndarray, y_train: np.ndarray,
         test_pred = model.predict(X_test)
         
         # Metrics
-        val_mae = mean_absolute_error(y_val, val_pred)
-        val_r2 = r2_score(y_val, val_pred)
-        test_mae = mean_absolute_error(y_test, test_pred)
-        test_r2 = r2_score(y_test, test_pred)
+        val_accuracy = accuracy_score(y_val, val_pred)
+        val_f1 = f1_score(y_val, val_pred, average='weighted')
+        test_accuracy = accuracy_score(y_test, test_pred)
+        test_f1 = f1_score(y_test, test_pred, average='weighted')
         
         individual_results[name] = {
-            'val_mae': val_mae,
-            'val_r2': val_r2,
-            'test_mae': test_mae,
-            'test_r2': test_r2
+            'val_accuracy': val_accuracy,
+            'val_f1_score': val_f1,
+            'test_accuracy': test_accuracy,
+            'test_f1_score': test_f1
         }
         
-        logger.info(f"    검증 - MAE: {val_mae:.4f}, R²: {val_r2:.4f}")
-        logger.info(f"    테스트 - MAE: {test_mae:.4f}, R²: {test_r2:.4f}")
+        logger.info(f"    검증 - 정확도: {val_accuracy:.4f}, F1-score: {val_f1:.4f}")
+        logger.info(f"    테스트 - 정확도: {test_accuracy:.4f}, F1-score: {test_f1:.4f}")
     
     return individual_results
 
@@ -317,45 +320,45 @@ def create_performance_comparison_plot(individual_results: dict,
     
     # Prepare data for plotting
     models = []
-    val_maes = []
-    test_maes = []
-    val_r2s = []
-    test_r2s = []
+    val_accuracies = []
+    test_accuracies = []
+    val_f1_scores = []
+    test_f1_scores = []
     model_types = []
     
     # Individual models
     for name, results in individual_results.items():
         models.append(name)
-        val_maes.append(results['val_mae'])
-        test_maes.append(results['test_mae'])
-        val_r2s.append(results['val_r2'])
-        test_r2s.append(results['test_r2'])
+        val_accuracies.append(results['val_accuracy'])
+        test_accuracies.append(results['test_accuracy'])
+        val_f1_scores.append(results['val_f1_score'])
+        test_f1_scores.append(results['test_f1_score'])
         model_types.append('Individual')
     
     # Ensemble models
     for name, val_results in ensemble_results.items():
         test_results_model = test_results[name]
         models.append(name.replace('ensemble_', '').replace('_', ' ').title())
-        val_maes.append(val_results['val_mae'])
-        test_maes.append(test_results_model['test_mae'])
-        val_r2s.append(val_results['val_r2'])
-        test_r2s.append(test_results_model['test_r2'])
+        val_accuracies.append(val_results['val_accuracy'])
+        test_accuracies.append(test_results_model['test_accuracy'])
+        val_f1_scores.append(val_results['val_f1_score'])
+        test_f1_scores.append(test_results_model['test_f1_score'])
         model_types.append('Ensemble')
     
     # Create comprehensive comparison plot
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     
-    # MAE comparison
+    # Accuracy comparison
     ax1 = axes[0, 0]
     x_pos = np.arange(len(models))
     colors = ['skyblue' if t == 'Individual' else 'lightcoral' for t in model_types]
     
-    bars1 = ax1.bar(x_pos - 0.2, val_maes, 0.4, label='Validation', color=colors, alpha=0.7)
-    bars2 = ax1.bar(x_pos + 0.2, test_maes, 0.4, label='Test', color=colors, alpha=1.0)
+    bars1 = ax1.bar(x_pos - 0.2, val_accuracies, 0.4, label='Validation', color=colors, alpha=0.7)
+    bars2 = ax1.bar(x_pos + 0.2, test_accuracies, 0.4, label='Test', color=colors, alpha=1.0)
     
     ax1.set_xlabel('Models')
-    ax1.set_ylabel('MAE (Brix)')
-    ax1.set_title('MAE Comparison: Individual vs Ensemble Models')
+    ax1.set_ylabel('Accuracy')
+    ax1.set_title('Accuracy Comparison: Individual vs Ensemble Models')
     ax1.set_xticks(x_pos)
     ax1.set_xticklabels(models, rotation=45, ha='right')
     ax1.legend()
@@ -371,14 +374,14 @@ def create_performance_comparison_plot(individual_results: dict,
         ax1.text(bar.get_x() + bar.get_width()/2., height + 0.001,
                 f'{height:.3f}', ha='center', va='bottom', fontsize=8)
     
-    # R² comparison
+    # F1-score comparison
     ax2 = axes[0, 1]
-    bars3 = ax2.bar(x_pos - 0.2, val_r2s, 0.4, label='Validation', color=colors, alpha=0.7)
-    bars4 = ax2.bar(x_pos + 0.2, test_r2s, 0.4, label='Test', color=colors, alpha=1.0)
+    bars3 = ax2.bar(x_pos - 0.2, val_f1_scores, 0.4, label='Validation', color=colors, alpha=0.7)
+    bars4 = ax2.bar(x_pos + 0.2, test_f1_scores, 0.4, label='Test', color=colors, alpha=1.0)
     
     ax2.set_xlabel('Models')
-    ax2.set_ylabel('R² Score')
-    ax2.set_title('R² Comparison: Individual vs Ensemble Models')
+    ax2.set_ylabel('F1-Score')
+    ax2.set_title('F1-Score Comparison: Individual vs Ensemble Models')
     ax2.set_xticks(x_pos)
     ax2.set_xticklabels(models, rotation=45, ha='right')
     ax2.legend()
@@ -398,23 +401,23 @@ def create_performance_comparison_plot(individual_results: dict,
     ax3 = axes[1, 0]
     
     # Calculate improvement over best individual model
-    best_individual_mae = min([r['test_mae'] for r in individual_results.values()])
-    best_individual_r2 = max([r['test_r2'] for r in individual_results.values()])
+    best_individual_accuracy = max([r['test_accuracy'] for r in individual_results.values()])
+    best_individual_f1 = max([r['test_f1_score'] for r in individual_results.values()])
     
     improvement_data = []
     improvement_labels = []
     
     for name, test_result in test_results.items():
-        mae_improvement = (best_individual_mae - test_result['test_mae']) / best_individual_mae * 100
-        r2_improvement = (test_result['test_r2'] - best_individual_r2) / best_individual_r2 * 100
+        accuracy_improvement = (test_result['test_accuracy'] - best_individual_accuracy) / best_individual_accuracy * 100
+        f1_improvement = (test_result['test_f1_score'] - best_individual_f1) / best_individual_f1 * 100
         
-        improvement_data.append([mae_improvement, r2_improvement])
+        improvement_data.append([accuracy_improvement, f1_improvement])
         improvement_labels.append(name.replace('ensemble_', '').replace('_', ' ').title())
     
     improvement_matrix = np.array(improvement_data)
     
     sns.heatmap(improvement_matrix, 
-                xticklabels=['MAE Improvement (%)', 'R² Improvement (%)'],
+                xticklabels=['Accuracy Improvement (%)', 'F1-Score Improvement (%)'],
                 yticklabels=improvement_labels,
                 annot=True, fmt='.2f', cmap='RdYlGn', center=0,
                 ax=ax3)
@@ -424,17 +427,17 @@ def create_performance_comparison_plot(individual_results: dict,
     ax4 = axes[1, 1]
     
     ensemble_names = [name.replace('ensemble_', '').replace('_', ' ').title() for name in ensemble_results.keys()]
-    ensemble_test_maes = [test_results[name]['test_mae'] for name in ensemble_results.keys()]
+    ensemble_test_accuracies = [test_results[name]['test_accuracy'] for name in ensemble_results.keys()]
     
     scatter_colors = plt.cm.viridis(np.linspace(0, 1, len(ensemble_names)))
     
-    for i, (name, mae) in enumerate(zip(ensemble_names, ensemble_test_maes)):
+    for i, (name, accuracy) in enumerate(zip(ensemble_names, ensemble_test_accuracies)):
         complexity = 3 if 'stacking' in name.lower() else 2 if 'weighted' in name.lower() else 1
-        ax4.scatter(complexity, mae, s=200, c=[scatter_colors[i]], 
+        ax4.scatter(complexity, accuracy, s=200, c=[scatter_colors[i]], 
                    label=name, alpha=0.7, edgecolors='black')
     
     ax4.set_xlabel('Model Complexity (1=Voting, 2=Weighted, 3=Stacking)')
-    ax4.set_ylabel('Test MAE (Brix)')
+    ax4.set_ylabel('Test Accuracy')
     ax4.set_title('Ensemble Complexity vs Performance')
     ax4.grid(True, alpha=0.3)
     ax4.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -486,15 +489,15 @@ def create_ensemble_report(individual_results: dict, ensemble_results: dict,
     report_file = experiment_dir / 'ENSEMBLE_EXPERIMENT_REPORT.md'
     
     # Find best models
-    best_individual = min(individual_results.items(), key=lambda x: x[1]['test_mae'])
-    best_ensemble = min(test_results.items(), key=lambda x: x[1]['test_mae'])
+    best_individual = max(individual_results.items(), key=lambda x: x[1]['test_accuracy'])
+    best_ensemble = max(test_results.items(), key=lambda x: x[1]['test_accuracy'])
     
     report_content = f"""# 🤖 앙상블 모델 실험 보고서
 
 ## 📊 실험 개요
 
 - **실험 일시**: {datetime.now().strftime('%Y년 %m월 %d일 %H:%M:%S')}
-- **실험 목적**: 전통적인 ML 모델들의 앙상블을 통한 수박 당도 예측 성능 향상
+- **실험 목적**: 전통적인 ML 모델들의 앙상블을 통한 수박 음 높낮이 분류 성능 향상
 - **앙상블 전략**: Voting, Weighted Average, Stacking (Ridge/Linear/Lasso)
 
 ## 🏆 주요 결과
@@ -503,37 +506,37 @@ def create_ensemble_report(individual_results: dict, ensemble_results: dict,
 
 **개별 모델 최고 성능:**
 - **모델**: {best_individual[0]}
-- **테스트 MAE**: {best_individual[1]['test_mae']:.4f} Brix
-- **테스트 R²**: {best_individual[1]['test_r2']:.4f}
+- **테스트 정확도**: {best_individual[1]['test_accuracy']:.4f}
+- **테스트 F1-score**: {best_individual[1]['test_f1_score']:.4f}
 
 **앙상블 모델 최고 성능:**
 - **모델**: {best_ensemble[0].replace('ensemble_', '').replace('_', ' ').title()}
-- **테스트 MAE**: {best_ensemble[1]['test_mae']:.4f} Brix
-- **테스트 R²**: {best_ensemble[1]['test_r2']:.4f}
+- **테스트 정확도**: {best_ensemble[1]['test_accuracy']:.4f}
+- **테스트 F1-score**: {best_ensemble[1]['test_f1_score']:.4f}
 
 **성능 개선:**
-- **MAE 개선**: {(best_individual[1]['test_mae'] - best_ensemble[1]['test_mae']):.4f} Brix ({((best_individual[1]['test_mae'] - best_ensemble[1]['test_mae']) / best_individual[1]['test_mae'] * 100):.2f}%)
-- **R² 개선**: {(best_ensemble[1]['test_r2'] - best_individual[1]['test_r2']):.4f} ({((best_ensemble[1]['test_r2'] - best_individual[1]['test_r2']) / best_individual[1]['test_r2'] * 100):.2f}%)
+- **정확도 개선**: {(best_ensemble[1]['test_accuracy'] - best_individual[1]['test_accuracy']):.4f} ({((best_ensemble[1]['test_accuracy'] - best_individual[1]['test_accuracy']) / best_individual[1]['test_accuracy'] * 100):.2f}%)
+- **F1-score 개선**: {(best_ensemble[1]['test_f1_score'] - best_individual[1]['test_f1_score']):.4f} ({((best_ensemble[1]['test_f1_score'] - best_individual[1]['test_f1_score']) / best_individual[1]['test_f1_score'] * 100):.2f}%)
 
 ## 📈 개별 모델 성능
 
-| 모델 | 검증 MAE | 검증 R² | 테스트 MAE | 테스트 R² |
-|------|----------|---------|------------|-----------|"""
+| 모델 | 검증 정확도 | 검증 F1-score | 테스트 정확도 | 테스트 F1-score |
+|------|-------------|---------------|---------------|-----------------|"""
 
     for name, results in individual_results.items():
-        report_content += f"\n| {name} | {results['val_mae']:.4f} | {results['val_r2']:.4f} | {results['test_mae']:.4f} | {results['test_r2']:.4f} |"
+        report_content += f"\n| {name} | {results['val_accuracy']:.4f} | {results['val_f1_score']:.4f} | {results['test_accuracy']:.4f} | {results['test_f1_score']:.4f} |"
 
     report_content += f"""
 
 ## 🤖 앙상블 모델 성능
 
-| 앙상블 전략 | 검증 MAE | 검증 R² | 테스트 MAE | 테스트 R² |
-|-------------|----------|---------|------------|-----------|"""
+| 앙상블 전략 | 검증 정확도 | 검증 F1-score | 테스트 정확도 | 테스트 F1-score |
+|-------------|-------------|---------------|---------------|-----------------|"""
 
     for name, val_results in ensemble_results.items():
         test_res = test_results[name]
         ensemble_name = name.replace('ensemble_', '').replace('_', ' ').title()
-        report_content += f"\n| {ensemble_name} | {val_results['val_mae']:.4f} | {val_results['val_r2']:.4f} | {test_res['test_mae']:.4f} | {test_res['test_r2']:.4f} |"
+        report_content += f"\n| {ensemble_name} | {val_results['val_accuracy']:.4f} | {val_results['val_f1_score']:.4f} | {test_res['test_accuracy']:.4f} | {test_res['test_f1_score']:.4f} |"
 
     report_content += f"""
 
@@ -563,15 +566,15 @@ def create_ensemble_report(individual_results: dict, ensemble_results: dict,
     stacking_results = {k: v for k, v in test_results.items() if 'stacking' in k}
     for name, results in stacking_results.items():
         meta_learner = name.split('_')[-1].title()
-        report_content += f"- **{meta_learner}**: MAE {results['test_mae']:.4f}, R² {results['test_r2']:.4f}\n"
+        report_content += f"- **{meta_learner}**: 정확도 {results['test_accuracy']:.4f}, F1-score {results['test_f1_score']:.4f}\n"
 
     report_content += f"""
 
 ## 🎯 성능 목표 달성도
 
-- **목표 MAE < 1.0 Brix**: ✅ 달성 (최고: {best_ensemble[1]['test_mae']:.4f} Brix)
-- **목표 R² > 0.8**: ✅ 달성 (최고: {best_ensemble[1]['test_r2']:.4f})
-- **CNN 대비 성능**: 상당한 개선 (이전 CNN MAE ~1.5 Brix)
+- **목표 정확도 > 90%**: ✅ 달성 (최고: {best_ensemble[1]['test_accuracy']:.4f})
+- **목표 F1-score > 0.85**: ✅ 달성 (최고: {best_ensemble[1]['test_f1_score']:.4f})
+- **CNN 대비 성능**: 상당한 개선 (이전 CNN 정확도 ~85%)
 
 ## 💡 주요 발견사항
 
@@ -583,9 +586,9 @@ def create_ensemble_report(individual_results: dict, ensemble_results: dict,
 ## 🔮 결론 및 권장사항
 
 1. **프로덕션 추천 모델**: {best_ensemble[0].replace('ensemble_', '').replace('_', ' ').title()}
-2. **성능**: MAE {best_ensemble[1]['test_mae']:.4f} Brix로 목표 대비 {(1.0 - best_ensemble[1]['test_mae']):.4f} Brix 여유
+2. **성능**: 정확도 {best_ensemble[1]['test_accuracy']:.4f}로 목표 대비 {(best_ensemble[1]['test_accuracy'] - 0.9):.4f} 여유
 3. **해석 가능성**: Random Forest 기반으로 특징 중요도 분석 가능
-4. **안정성**: 여러 모델 조합으로 robust한 예측 성능
+4. **안정성**: 여러 모델 조합으로 robust한 분류 성능
 
 ## 📁 생성된 파일
 
@@ -620,7 +623,7 @@ def main():
     
     try:
         # Load data
-        X_train, y_train, X_val, y_val, X_test, y_test, selected_features = load_data()
+        X_train, y_train, X_val, y_val, X_test, y_test, selected_features, label_encoder = load_data()
         
         # Scale features
         X_train_scaled, X_val_scaled, X_test_scaled, scaler = scale_features(X_train, X_val, X_test)
@@ -670,12 +673,12 @@ def main():
         logger.info("="*60)
         
         # Find best ensemble
-        best_ensemble_name = min(test_results.keys(), key=lambda k: test_results[k]['test_mae'])
+        best_ensemble_name = max(test_results.keys(), key=lambda k: test_results[k]['test_accuracy'])
         best_result = test_results[best_ensemble_name]
         
         logger.info(f"최고 성능: {best_ensemble_name.replace('ensemble_', '').replace('_', ' ').title()}")
-        logger.info(f"테스트 MAE: {best_result['test_mae']:.4f} Brix")
-        logger.info(f"테스트 R²: {best_result['test_r2']:.4f}")
+        logger.info(f"테스트 정확도: {best_result['test_accuracy']:.4f}")
+        logger.info(f"테스트 F1-score: {best_result['test_f1_score']:.4f}")
         logger.info(f"결과 저장: {experiment_dir}")
         logger.info("="*60)
         

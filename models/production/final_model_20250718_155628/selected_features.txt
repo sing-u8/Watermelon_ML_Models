@@ -1,0 +1,10 @@
+mfcc_12
+mfcc_7
+mel_spec_energy
+mel_spec_entropy
+inharmonicity
+mfcc_13
+mfcc_10
+roughness
+mfcc_8
+mel_spec_rms

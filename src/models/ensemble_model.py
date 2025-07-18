@@ -16,11 +16,11 @@ import logging
 from pathlib import Path
 import yaml
 
-from sklearn.ensemble import VotingRegressor
-from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from sklearn.ensemble import VotingClassifier
+from sklearn.linear_model import LogisticRegression, RidgeClassifier, SGDClassifier
 from sklearn.model_selection import cross_val_score
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.base import BaseEstimator, RegressorMixin, clone
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.base import BaseEstimator, ClassifierMixin, clone
 from sklearn.model_selection import KFold
 
 # Import our traditional ML models
@@ -29,7 +29,7 @@ from src.models.traditional_ml import WatermelonGBT, WatermelonSVM, WatermelonRa
 logger = logging.getLogger(__name__)
 
 
-class WatermelonEnsemble(BaseEstimator, RegressorMixin):
+class WatermelonEnsemble(BaseEstimator, ClassifierMixin):
     """
     Ensemble model for watermelon sweetness prediction.
     
@@ -105,11 +105,11 @@ class WatermelonEnsemble(BaseEstimator, RegressorMixin):
     def _get_meta_learner(self) -> BaseEstimator:
         """Get meta-learner for stacking."""
         if self.meta_learner == 'linear':
-            return LinearRegression()
+            return LogisticRegression(random_state=self.random_state)
         elif self.meta_learner == 'ridge':
-            return Ridge(alpha=1.0, random_state=self.random_state)
+            return RidgeClassifier(alpha=1.0, random_state=self.random_state)
         elif self.meta_learner == 'lasso':
-            return Lasso(alpha=0.1, random_state=self.random_state)
+            return SGDClassifier(loss='log_loss', penalty='l1', alpha=0.1, random_state=self.random_state)
         else:
             raise ValueError(f"Unknown meta_learner: {self.meta_learner}")
     
@@ -122,17 +122,16 @@ class WatermelonEnsemble(BaseEstimator, RegressorMixin):
         
         for name, model in self.base_models.items():
             logger.info(f"  {name} 교차 검증 중...")
-            # Use negative MAE for scoring (higher is better)
+            # Use accuracy for scoring (higher is better)
             scores = cross_val_score(model, X, y, cv=kfold, 
-                                   scoring='neg_mean_absolute_error', n_jobs=-1)
-            cv_scores[name] = -np.mean(scores)  # Convert back to positive MAE
-            logger.info(f"    CV MAE: {cv_scores[name]:.4f}")
+                                   scoring='accuracy', n_jobs=-1)
+            cv_scores[name] = np.mean(scores)  # Accuracy score
+            logger.info(f"    CV Accuracy: {cv_scores[name]:.4f}")
         
-        # Calculate weights inversely proportional to error
-        # Better performance (lower MAE) gets higher weight
-        inverse_errors = {name: 1.0 / error for name, error in cv_scores.items()}
-        total_inverse = sum(inverse_errors.values())
-        weights = {name: inv_err / total_inverse for name, inv_err in inverse_errors.items()}
+        # Calculate weights proportional to accuracy
+        # Better performance (higher accuracy) gets higher weight
+        total_accuracy = sum(cv_scores.values())
+        weights = {name: acc / total_accuracy for name, acc in cv_scores.items()}
         
         logger.info("계산된 모델 가중치:")
         for name, weight in weights.items():
@@ -228,11 +227,13 @@ class WatermelonEnsemble(BaseEstimator, RegressorMixin):
             base_predictions[name] = model.predict(X)
         
         if self.ensemble_strategy in ['voting', 'weighted']:
-            # Weighted average of predictions
+            # Weighted voting for classification
+            # For binary classification, we'll use probability predictions
             predictions = np.zeros(X.shape[0])
             for name, pred in base_predictions.items():
                 predictions += self.model_weights_[name] * pred
-            return predictions
+            # Round to nearest integer for classification
+            return np.round(predictions).astype(int)
             
         elif self.ensemble_strategy == 'stacking':
             # Use meta-learner for final prediction
@@ -353,26 +354,26 @@ class EnsembleTrainer:
             
             # Evaluate on validation set
             val_pred = ensemble.predict(X_val)
-            val_mae = mean_absolute_error(y_val, val_pred)
-            val_r2 = r2_score(y_val, val_pred)
+            val_accuracy = accuracy_score(y_val, val_pred)
+            val_f1 = f1_score(y_val, val_pred, average='weighted')
             
-            logger.info(f"검증 성능 - MAE: {val_mae:.4f}, R²: {val_r2:.4f}")
+            logger.info(f"검증 성능 - 정확도: {val_accuracy:.4f}, F1-score: {val_f1:.4f}")
             
             # Store results
             self.ensemble_models[config['name']] = ensemble
             self.evaluation_results[config['name']] = {
-                'val_mae': val_mae,
-                'val_r2': val_r2,
+                'val_accuracy': val_accuracy,
+                'val_f1_score': val_f1,
                 'config': config
             }
         
         # Find best ensemble
-        best_ensemble_name = min(self.evaluation_results.keys(),
-                               key=lambda k: self.evaluation_results[k]['val_mae'])
+        best_ensemble_name = max(self.evaluation_results.keys(),
+                               key=lambda k: self.evaluation_results[k]['val_accuracy'])
         
         logger.info(f"\n🏆 최고 앙상블: {best_ensemble_name}")
-        logger.info(f"   MAE: {self.evaluation_results[best_ensemble_name]['val_mae']:.4f}")
-        logger.info(f"   R²: {self.evaluation_results[best_ensemble_name]['val_r2']:.4f}")
+        logger.info(f"   정확도: {self.evaluation_results[best_ensemble_name]['val_accuracy']:.4f}")
+        logger.info(f"   F1-score: {self.evaluation_results[best_ensemble_name]['val_f1_score']:.4f}")
         
         return self.ensemble_models
     
@@ -394,19 +395,19 @@ class EnsembleTrainer:
         for name, ensemble in self.ensemble_models.items():
             test_pred = ensemble.predict(X_test)
             
-            test_mae = mean_absolute_error(y_test, test_pred)
-            test_mse = mean_squared_error(y_test, test_pred)
-            test_rmse = np.sqrt(test_mse)
-            test_r2 = r2_score(y_test, test_pred)
+            test_accuracy = accuracy_score(y_test, test_pred)
+            test_f1 = f1_score(y_test, test_pred, average='weighted')
+            test_precision = precision_score(y_test, test_pred, average='weighted')
+            test_recall = recall_score(y_test, test_pred, average='weighted')
             
             test_results[name] = {
-                'test_mae': test_mae,
-                'test_mse': test_mse,
-                'test_rmse': test_rmse,
-                'test_r2': test_r2
+                'test_accuracy': test_accuracy,
+                'test_f1_score': test_f1,
+                'test_precision': test_precision,
+                'test_recall': test_recall
             }
             
-            logger.info(f"{name}: MAE={test_mae:.4f}, R²={test_r2:.4f}")
+            logger.info(f"{name}: 정확도={test_accuracy:.4f}, F1-score={test_f1:.4f}")
         
         return test_results
     
@@ -423,9 +424,9 @@ class EnsembleTrainer:
         if not self.evaluation_results:
             raise ValueError("No ensemble models trained yet")
         
-        # Find best ensemble based on validation MAE
-        best_name = min(self.evaluation_results.keys(),
-                       key=lambda k: self.evaluation_results[k]['val_mae'])
+        # Find best ensemble based on validation accuracy
+        best_name = max(self.evaluation_results.keys(),
+                       key=lambda k: self.evaluation_results[k]['val_accuracy'])
         
         best_ensemble = self.ensemble_models[best_name]
         
