@@ -39,9 +39,9 @@ preprocessing:
 cross_validation:
   n_folds: 5
   cv_folds: 5
-  scoring: "neg_mean_absolute_error"  # MAE 최소화
+  scoring: "accuracy"  # 분류 정확도
   shuffle: true
-  stratify: false  # 회귀 문제이므로 false
+  stratify: true  # 분류 문제이므로 true
 
 # =============================================================================
 # Gradient Boosting Trees (GBT) 설정
@@ -60,7 +60,7 @@ gradient_boosting:
     
   # 고급 설정
   advanced:
-    loss: "squared_error"  # 회귀용
+    loss: "log_loss"  # 분류용
     criterion: "friedman_mse"
     warm_start: false
     validation_fraction: 0.1
@@ -120,7 +120,7 @@ random_forest:
     
   # 고급 설정
   advanced:
-    criterion: "squared_error"  # 회귀용
+    criterion: "gini"  # 분류용
     max_samples: null  # bootstrap 샘플 수
     min_weight_fraction_leaf: 0.0
     max_leaf_nodes: null
@@ -179,35 +179,34 @@ training:
     restore_best_weights: true
 
 # =============================================================================
-# 평가 메트릭 설정
+# 평가 메트릭 설정 (분류)
 # =============================================================================
 evaluation:
-  # 주요 회귀 메트릭
+  # 주요 분류 메트릭
   primary_metrics:
-    - "mae"           # Mean Absolute Error (주요 목표: < 1.0)
-    - "mse"           # Mean Squared Error
-    - "rmse"          # Root Mean Squared Error
-    - "r2"            # R² Score (목표: > 0.8)
-    - "mape"          # Mean Absolute Percentage Error
+    - "accuracy"      # 정확도 (주요 목표: > 90%)
+    - "f1_score"      # F1-score (목표: > 0.85)
+    - "precision"     # 정밀도 (목표: > 0.85)
+    - "recall"        # 재현율 (목표: > 0.85)
+    - "auc_roc"       # AUC-ROC (목표: > 0.90)
     
   # 추가 메트릭
   additional_metrics:
-    - "median_ae"     # Median Absolute Error
-    - "max_error"     # Maximum Error
-    - "explained_var" # Explained Variance
+    - "balanced_accuracy"  # 균형 정확도
+    - "matthews_corrcoef"  # 매튜 상관계수
+    - "cohen_kappa"        # 코헨 카파
     
   # 사용자 정의 메트릭
   custom_metrics:
-    accuracy_0_5: "within_0_5_brix"  # ±0.5 Brix 내 정확도
-    accuracy_1_0: "within_1_0_brix"  # ±1.0 Brix 내 정확도
+    class_balance: "check_class_balance"  # 클래스 균형 확인
 
 # =============================================================================
 # 실험 추적 설정
 # =============================================================================
 experiment:
   # 실험 이름 및 태그
-  name: "watermelon_traditional_ml"
-  tags: ["traditional_ml", "audio_features", "sweetness_prediction"]
+  name: "watermelon_pitch_classification"
+  tags: ["traditional_ml", "audio_features", "pitch_classification"]
   
   # 로깅 설정
   logging:
@@ -247,27 +246,28 @@ visualization:
   # 생성할 플롯 유형
   plot_types:
     - "performance_comparison"
-    - "prediction_scatter"
-    - "residual_plot"
+    - "confusion_matrix"
+    - "roc_curve"
     - "feature_importance"
     - "learning_curve"
     - "cross_validation_scores"
 
 # =============================================================================
-# 성능 목표
+# 성능 목표 (분류 문제)
 # =============================================================================
 performance:
   # 주요 목표 (CNN 모델 대비 개선)
-  target_mae: 1.0          # MAE < 1.0 Brix
-  target_r2: 0.8           # R² > 0.8
+  target_accuracy: 0.90     # 정확도 > 90%
+  target_f1_score: 0.85     # F1-score > 0.85
+  target_precision: 0.85    # Precision > 0.85
+  target_recall: 0.85       # Recall > 0.85
   
   # 추가 목표
-  training_time_max: 600   # 10분 이내
-  inference_time_max: 0.001  # 1ms 이내
+  training_time_max: 600    # 10분 이내
+  inference_time_max: 0.001 # 1ms 이내
   
-  # 정확도 목표
-  accuracy_within_0_5: 0.7  # 70% 이상이 ±0.5 Brix 내
-  accuracy_within_1_0: 0.9  # 90% 이상이 ±1.0 Brix 내
+  # 분류 정확도 목표
+  target_auc_roc: 0.90      # AUC-ROC > 0.90
 
 # =============================================================================
 # 하이퍼파라미터 튜닝 설정 (Phase 4용)
@@ -279,7 +279,7 @@ hyperparameter_tuning:
   # GridSearchCV 설정
   grid_search:
     cv: 5
-    scoring: "neg_mean_absolute_error"
+    scoring: "accuracy"
     n_jobs: -1
     verbose: 2
     return_train_score: true
@@ -288,7 +288,7 @@ hyperparameter_tuning:
   random_search:
     n_iter: 100
     cv: 5
-    scoring: "neg_mean_absolute_error"
+    scoring: "accuracy"
     n_jobs: -1
     verbose: 2
     random_state: 42

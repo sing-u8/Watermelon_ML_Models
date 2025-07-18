@@ -1,7 +1,7 @@
 """
-🍉 수박 당도 예측 - 전통적인 머신러닝 모델 클래스
+🍉 수박 음 높낮이 분류 - 전통적인 머신러닝 모델 클래스
 
-scikit-learn 기반 GBT, SVM, Random Forest 모델 구현
+scikit-learn 기반 GBT, SVM, Random Forest 분류 모델 구현
 - 공통 인터페이스 제공
 - 특징 스케일링 통합
 - 교차 검증 및 성능 평가
@@ -20,15 +20,14 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Tuple, Optional, Union, Any
 from pathlib import Path
 
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
-from sklearn.svm import SVR
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 from sklearn.model_selection import cross_val_score, cross_validate
-from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.metrics import (
-    mean_absolute_error, mean_squared_error, r2_score,
-    mean_absolute_percentage_error, median_absolute_error,
-    max_error, explained_variance_score
+    accuracy_score, f1_score, precision_score, recall_score,
+    roc_auc_score, confusion_matrix, classification_report
 )
 import warnings
 warnings.filterwarnings('ignore')
@@ -38,12 +37,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
+class BaseWatermelonModel(BaseEstimator, ClassifierMixin, ABC):
     """
-    수박 당도 예측 모델을 위한 추상 베이스 클래스
+    수박 음 높낮이 분류 모델을 위한 추상 베이스 클래스
     
-    모든 전통적인 ML 모델이 공통으로 구현해야 하는 인터페이스 정의
-    scikit-learn의 BaseEstimator와 RegressorMixin을 상속받아 
+    모든 전통적인 ML 분류 모델이 공통으로 구현해야 하는 인터페이스 정의
+    scikit-learn의 BaseEstimator와 ClassifierMixin을 상속받아 
     GridSearchCV/RandomizedSearchCV와 호환됩니다.
     """
     
@@ -62,6 +61,7 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
         self.is_fitted = False
         self.feature_names = None
         self.training_history = {}
+        self.classes_ = None
         
         # 스케일러 초기화
         self._init_scaler()
@@ -91,7 +91,7 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
         
         Args:
             X: 훈련 특징
-            y: 훈련 타겟
+            y: 훈련 타겟 (0: 낮음, 1: 높음)
             X_val: 검증 특징 (선택사항)
             y_val: 검증 타겟 (선택사항)
         """
@@ -99,6 +99,9 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
         
         # 입력 검증
         X, y = self._validate_input(X, y)
+        
+        # 클래스 정보 저장
+        self.classes_ = np.unique(y)
         
         # 특징 스케일링
         X_scaled = self._fit_transform_features(X)
@@ -122,13 +125,13 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
     
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
-        예측 수행
+        분류 예측 수행
         
         Args:
             X: 예측할 특징
             
         Returns:
-            예측 결과
+            예측된 클래스 (0: 낮음, 1: 높음)
         """
         if not self.is_fitted:
             raise ValueError("Model must be fitted before prediction.")
@@ -145,14 +148,39 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
         
         return predictions
     
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """
+        분류 확률 예측 수행
+        
+        Args:
+            X: 예측할 특징
+            
+        Returns:
+            각 클래스에 대한 확률
+        """
+        if not self.is_fitted:
+            raise ValueError("Model must be fitted before prediction.")
+        
+        if self.model is None:
+            raise ValueError("Model is not initialized.")
+        
+        if self.scaler is None:
+            raise ValueError("Scaler is not initialized.")
+        
+        X = self._validate_input_single(X)
+        X_scaled = self.scaler.transform(X)
+        probabilities = self.model.predict_proba(X_scaled)
+        
+        return probabilities
+    
     def cross_validate(self, X: np.ndarray, y: np.ndarray, cv: int = 5, 
-                      scoring: str = 'neg_mean_absolute_error') -> Dict[str, Any]:
+                      scoring: str = 'accuracy') -> Dict[str, Any]:
         """
         교차 검증 수행
         
         Args:
             X: 특징
-            y: 타겟
+            y: 타겟 (0: 낮음, 1: 높음)
             cv: 교차 검증 폴드 수
             scoring: 평가 지표
             
@@ -171,28 +199,33 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
         cv_results = cross_validate(
             model, X_scaled, y,
             cv=cv,
-            scoring=['neg_mean_absolute_error', 'neg_mean_squared_error', 'r2'],
+            scoring=['accuracy', 'f1', 'precision', 'recall', 'roc_auc'],
             return_train_score=True,
             n_jobs=-1
         )
         
         # 결과 정리
         results = {
-            'test_mae': -cv_results['test_neg_mean_absolute_error'],
-            'test_mse': -cv_results['test_neg_mean_squared_error'],
-            'test_r2': cv_results['test_r2'],
-            'train_mae': -cv_results['train_neg_mean_absolute_error'],
-            'train_mse': -cv_results['train_neg_mean_squared_error'],
-            'train_r2': cv_results['train_r2'],
+            'test_accuracy': cv_results['test_accuracy'],
+            'test_f1': cv_results['test_f1'],
+            'test_precision': cv_results['test_precision'],
+            'test_recall': cv_results['test_recall'],
+            'test_roc_auc': cv_results['test_roc_auc'],
+            'train_accuracy': cv_results['train_accuracy'],
+            'train_f1': cv_results['train_f1'],
+            'train_precision': cv_results['train_precision'],
+            'train_recall': cv_results['train_recall'],
+            'train_roc_auc': cv_results['train_roc_auc'],
         }
         
         # 통계 요약
-        for metric in ['test_mae', 'test_mse', 'test_r2', 'train_mae', 'train_mse', 'train_r2']:
+        for metric in ['test_accuracy', 'test_f1', 'test_precision', 'test_recall', 'test_roc_auc',
+                      'train_accuracy', 'train_f1', 'train_precision', 'train_recall', 'train_roc_auc']:
             values = results[metric]
             results[f'{metric}_mean'] = np.mean(values)
             results[f'{metric}_std'] = np.std(values)
         
-        logger.info(f"Cross validation completed. Test MAE: {results['test_mae_mean']:.3f} ± {results['test_mae_std']:.3f}")
+        logger.info(f"Cross validation completed. Test Accuracy: {results['test_accuracy_mean']:.3f} ± {results['test_accuracy_std']:.3f}")
         
         return results
     
@@ -201,8 +234,8 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
         모델 성능 평가
         
         Args:
-            X: 특징
-            y: 실제 타겟
+            X: 테스트 특징
+            y: 테스트 타겟 (0: 낮음, 1: 높음)
             
         Returns:
             평가 메트릭 딕셔너리
@@ -210,36 +243,40 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
         if not self.is_fitted:
             raise ValueError("Model must be fitted before evaluation.")
         
+        X, y = self._validate_input(X, y)
         predictions = self.predict(X)
+        probabilities = self.predict_proba(X)
         
+        # 분류 메트릭 계산
         metrics = {
-            'mae': mean_absolute_error(y, predictions),
-            'mse': mean_squared_error(y, predictions),
-            'rmse': np.sqrt(mean_squared_error(y, predictions)),
-            'r2': r2_score(y, predictions),
-            'mape': mean_absolute_percentage_error(y, predictions),
-            'median_ae': median_absolute_error(y, predictions),
-            'max_error': max_error(y, predictions),
-            'explained_variance': explained_variance_score(y, predictions)
+            'accuracy': accuracy_score(y, predictions),
+            'f1_score': f1_score(y, predictions),
+            'precision': precision_score(y, predictions),
+            'recall': recall_score(y, predictions),
+            'roc_auc': roc_auc_score(y, probabilities[:, 1]),
         }
         
-        # 사용자 정의 메트릭
-        metrics['accuracy_0_5'] = self._accuracy_within_threshold(y, predictions, 0.5)
-        metrics['accuracy_1_0'] = self._accuracy_within_threshold(y, predictions, 1.0)
+        # 혼동 행렬
+        cm = confusion_matrix(y, predictions)
+        metrics['confusion_matrix'] = cm
+        
+        # 분류 리포트
+        report = classification_report(y, predictions, output_dict=True)
+        metrics['classification_report'] = report
         
         return metrics
     
     def get_feature_importance(self) -> Optional[np.ndarray]:
         """
-        특징 중요도 반환 (지원하는 모델만)
+        특징 중요도 반환
         
         Returns:
-            특징 중요도 배열 (없으면 None)
+            특징 중요도 배열
         """
-        if not self.is_fitted:
-            raise ValueError("Model must be fitted before getting feature importance.")
+        if not self.is_fitted or self.model is None:
+            return None
         
-        if self.model is not None and hasattr(self.model, 'feature_importances_'):
+        if hasattr(self.model, 'feature_importances_'):
             return self.model.feature_importances_
         else:
             logger.warning(f"{self.model_name} does not support feature importance.")
@@ -250,23 +287,24 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
         모델 저장
         
         Args:
-            filepath: 저장할 파일 경로 (.pkl)
+            filepath: 저장할 파일 경로
         """
         if not self.is_fitted:
-            raise ValueError("Cannot save unfitted model.")
+            raise ValueError("Model must be fitted before saving.")
         
-        model_data = {
+        # 저장할 객체 준비
+        save_data = {
             'model': self.model,
             'scaler': self.scaler,
+            'feature_names': self.feature_names,
+            'classes_': self.classes_,
             'config': self.config,
             'model_name': self.model_name,
-            'feature_names': self.feature_names,
-            'training_history': self.training_history,
-            'is_fitted': self.is_fitted
+            'training_history': self.training_history
         }
         
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        joblib.dump(model_data, filepath)
+        # 모델 저장
+        joblib.dump(save_data, filepath)
         logger.info(f"Model saved to {filepath}")
     
     @classmethod
@@ -280,38 +318,49 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
         Returns:
             로드된 모델 인스턴스
         """
-        model_data = joblib.load(filepath)
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Model file not found: {filepath}")
         
-        # 인스턴스 생성
-        instance = cls(config=model_data['config'], model_name=model_data['model_name'])
+        # 모델 로드
+        save_data = joblib.load(filepath)
         
-        # 데이터 복원
-        instance.model = model_data['model']
-        instance.scaler = model_data['scaler']
-        instance.feature_names = model_data['feature_names']
-        instance.training_history = model_data['training_history']
-        instance.is_fitted = model_data['is_fitted']
+        # 모델 인스턴스 생성
+        model_instance = cls(config=save_data.get('config'))
+        model_instance.model = save_data['model']
+        model_instance.scaler = save_data['scaler']
+        model_instance.feature_names = save_data.get('feature_names')
+        model_instance.classes_ = save_data.get('classes_')
+        model_instance.training_history = save_data.get('training_history', {})
+        model_instance.is_fitted = True
         
         logger.info(f"Model loaded from {filepath}")
-        return instance
+        return model_instance
     
     def _validate_input(self, X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """입력 데이터 검증 (훈련용)"""
-        if not isinstance(X, np.ndarray):
-            X = np.array(X)
+        """입력 데이터 검증"""
+        if X is None or y is None:
+            raise ValueError("X and y cannot be None")
         
-        if not isinstance(y, np.ndarray):
-            y = np.array(y)
+        if len(X) != len(y):
+            raise ValueError("X and y must have the same length")
         
-        if len(X.shape) == 1:
-            X = X.reshape(1, -1)
+        if len(X) == 0:
+            raise ValueError("X and y cannot be empty")
+        
+        # 클래스 검증
+        unique_classes = np.unique(y)
+        if len(unique_classes) != 2:
+            raise ValueError(f"Expected 2 classes, got {len(unique_classes)}")
+        
+        if not np.array_equal(unique_classes, [0, 1]):
+            raise ValueError("Classes must be 0 and 1")
         
         return X, y
     
     def _validate_input_single(self, X: np.ndarray) -> np.ndarray:
-        """입력 데이터 검증 (예측용)"""
-        if not isinstance(X, np.ndarray):
-            X = np.array(X)
+        """단일 예측을 위한 입력 검증"""
+        if X is None:
+            raise ValueError("X cannot be None")
         
         if len(X.shape) == 1:
             X = X.reshape(1, -1)
@@ -319,99 +368,103 @@ class BaseWatermelonModel(BaseEstimator, RegressorMixin, ABC):
         return X
     
     def _fit_transform_features(self, X: np.ndarray) -> np.ndarray:
-        """특징 스케일링 (fit & transform)"""
-        if self.scaler is None:
-            raise ValueError("Scaler is not initialized.")
-        return self.scaler.fit_transform(X)
-    
-    def _accuracy_within_threshold(self, y_true: np.ndarray, y_pred: np.ndarray, threshold: float) -> float:
-        """임계값 내 정확도 계산"""
-        return float(np.mean(np.abs(y_true - y_pred) <= threshold))
+        """특징 스케일링 수행"""
+        if self.scaler is not None:
+            return self.scaler.fit_transform(X)
+        return X
     
     def __str__(self) -> str:
-        """문자열 표현"""
-        return f"{self.model_name}(fitted={self.is_fitted})"
+        return f"{self.model_name} (fitted: {self.is_fitted})"
     
     def __repr__(self) -> str:
-        """객체 표현"""
         return self.__str__()
 
 
 class WatermelonGBT(BaseWatermelonModel):
-    """
-    수박 당도 예측을 위한 Gradient Boosting Trees 모델
-    """
+    """Gradient Boosting Classifier for watermelon pitch classification"""
     
     def __init__(self, config: Optional[Dict[str, Any]] = None, random_state: int = 42):
         super().__init__(config, "WatermelonGBT")
         self.random_state = random_state
     
-    def _create_model(self) -> GradientBoostingRegressor:
-        """GBT 모델 생성"""
+    def _create_model(self) -> GradientBoostingClassifier:
+        """Gradient Boosting Classifier 생성"""
         gbt_config = self.config.get('gradient_boosting', {})
-        base_params = gbt_config.get('base_params', {})
-        base_params['random_state'] = self.random_state
         
-        return GradientBoostingRegressor(**base_params)
+        return GradientBoostingClassifier(
+            n_estimators=gbt_config.get('n_estimators', 100),
+            learning_rate=gbt_config.get('learning_rate', 0.1),
+            max_depth=gbt_config.get('max_depth', 3),
+            min_samples_split=gbt_config.get('min_samples_split', 2),
+            min_samples_leaf=gbt_config.get('min_samples_leaf', 1),
+            subsample=gbt_config.get('subsample', 1.0),
+            random_state=self.random_state
+        )
 
 
 class WatermelonSVM(BaseWatermelonModel):
-    """
-    수박 당도 예측을 위한 Support Vector Machine 모델
-    """
+    """Support Vector Classifier for watermelon pitch classification"""
     
     def __init__(self, config: Optional[Dict[str, Any]] = None, random_state: int = 42):
         super().__init__(config, "WatermelonSVM")
         self.random_state = random_state
     
-    def _create_model(self) -> SVR:
-        """SVM 모델 생성"""
+    def _create_model(self) -> SVC:
+        """Support Vector Classifier 생성"""
         svm_config = self.config.get('svm', {})
-        base_params = svm_config.get('base_params', {})
         
-        return SVR(**base_params)
+        return SVC(
+            kernel=svm_config.get('kernel', 'rbf'),
+            C=svm_config.get('C', 1.0),
+            gamma=svm_config.get('gamma', 'scale'),
+            probability=True,  # 확률 예측을 위해 필요
+            random_state=self.random_state
+        )
 
 
 class WatermelonRandomForest(BaseWatermelonModel):
-    """
-    수박 당도 예측을 위한 Random Forest 모델
-    """
+    """Random Forest Classifier for watermelon pitch classification"""
     
     def __init__(self, config: Optional[Dict[str, Any]] = None, random_state: int = 42):
         super().__init__(config, "WatermelonRandomForest")
         self.random_state = random_state
     
-    def _create_model(self) -> RandomForestRegressor:
-        """Random Forest 모델 생성"""
+    def _create_model(self) -> RandomForestClassifier:
+        """Random Forest Classifier 생성"""
         rf_config = self.config.get('random_forest', {})
-        base_params = rf_config.get('base_params', {})
-        base_params['random_state'] = self.random_state
         
-        return RandomForestRegressor(**base_params)
+        return RandomForestClassifier(
+            n_estimators=rf_config.get('n_estimators', 100),
+            max_depth=rf_config.get('max_depth', None),
+            min_samples_split=rf_config.get('min_samples_split', 2),
+            min_samples_leaf=rf_config.get('min_samples_leaf', 1),
+            max_features=rf_config.get('max_features', 'sqrt'),
+            random_state=self.random_state
+        )
 
 
 class ModelFactory:
-    """
-    모델 생성을 위한 팩토리 클래스
-    """
+    """모델 팩토리 클래스"""
     
     @staticmethod
     def create_model(model_type: str, config: Optional[Dict[str, Any]] = None) -> BaseWatermelonModel:
         """
-        모델 타입에 따라 모델 인스턴스 생성
+        모델 타입에 따른 모델 인스턴스 생성
         
         Args:
-            model_type: 모델 타입 ('gbt', 'svm', 'random_forest')
+            model_type: 모델 타입 ('gbt', 'svm', 'rf')
             config: 모델 설정
             
         Returns:
             모델 인스턴스
         """
-        if model_type.lower() in ['gbt', 'gradient_boosting']:
+        model_type = model_type.lower()
+        
+        if model_type == 'gbt':
             return WatermelonGBT(config)
-        elif model_type.lower() in ['svm', 'support_vector_machine']:
+        elif model_type == 'svm':
             return WatermelonSVM(config)
-        elif model_type.lower() in ['rf', 'random_forest']:
+        elif model_type == 'rf':
             return WatermelonRandomForest(config)
         else:
             raise ValueError(f"Unknown model type: {model_type}")
@@ -425,13 +478,14 @@ class ModelFactory:
             config: 모델 설정
             
         Returns:
-            모델 인스턴스 딕셔너리
+            모델 딕셔너리
         """
-        return {
+        models = {
             'gbt': WatermelonGBT(config),
             'svm': WatermelonSVM(config),
-            'random_forest': WatermelonRandomForest(config)
+            'rf': WatermelonRandomForest(config)
         }
+        return models
 
 
 def load_config(config_path: str = "configs/models.yaml") -> Dict[str, Any]:
@@ -446,28 +500,23 @@ def load_config(config_path: str = "configs/models.yaml") -> Dict[str, Any]:
     """
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
+            config = yaml.safe_load(f)
+        logger.info(f"Configuration loaded from {config_path}")
+        return config
     except FileNotFoundError:
-        logger.warning(f"Config file not found: {config_path}. Using default settings.")
+        logger.warning(f"Configuration file not found: {config_path}. Using default settings.")
         return {}
-    except Exception as e:
-        logger.error(f"Error loading config: {e}")
+    except yaml.YAMLError as e:
+        logger.error(f"Error parsing configuration file: {e}")
         return {}
 
 
 def test_models():
-    """모델 클래스 테스트 함수"""
-    logger.info("Testing traditional ML models...")
-    
-    # 가상 데이터 생성
+    """모델 테스트 함수"""
+    # 샘플 데이터 생성
     np.random.seed(42)
-    X = np.random.randn(100, 51)  # 51개 특징
-    y = np.random.uniform(8.0, 13.0, 100)  # 8-13 Brix 범위
-    
-    # 훈련/테스트 분할
-    split_idx = 80
-    X_train, X_test = X[:split_idx], X[split_idx:]
-    y_train, y_test = y[:split_idx], y[split_idx:]
+    X = np.random.randn(100, 10)
+    y = np.random.randint(0, 2, 100)
     
     # 설정 로드
     config = load_config()
@@ -475,44 +524,21 @@ def test_models():
     # 모든 모델 테스트
     models = ModelFactory.create_all_models(config)
     
-    for model_name, model in models.items():
-        logger.info(f"\nTesting {model_name.upper()} model:")
-        
-        # 훈련
-        model.fit(X_train, y_train, X_test, y_test)
-        
-        # 예측
-        predictions = model.predict(X_test)
-        logger.info(f"Predictions shape: {predictions.shape}")
-        
-        # 평가
-        metrics = model.evaluate(X_test, y_test)
-        logger.info(f"Test MAE: {metrics['mae']:.3f}")
-        logger.info(f"Test R²: {metrics['r2']:.3f}")
+    for name, model in models.items():
+        print(f"\nTesting {name}...")
         
         # 교차 검증
-        cv_results = model.cross_validate(X_train, y_train, cv=3)
-        logger.info(f"CV MAE: {cv_results['test_mae_mean']:.3f} ± {cv_results['test_mae_std']:.3f}")
+        cv_results = model.cross_validate(X, y, cv=3)
+        print(f"CV Accuracy: {cv_results['test_accuracy_mean']:.3f} ± {cv_results['test_accuracy_std']:.3f}")
         
-        # 특징 중요도
-        importance = model.get_feature_importance()
-        if importance is not None:
-            logger.info(f"Feature importance shape: {importance.shape}")
-            logger.info(f"Top 3 important features: {np.argsort(importance)[-3:]}")
+        # 훈련 및 평가
+        model.fit(X, y)
+        predictions = model.predict(X)
+        probabilities = model.predict_proba(X)
         
-        # 모델 저장/로드 테스트
-        save_path = f"models/test_{model_name}.pkl"
-        model.save_model(save_path)
-        
-        loaded_model = model.__class__.load_model(save_path)
-        test_pred = loaded_model.predict(X_test[:5])
-        logger.info(f"Loaded model prediction (first 5): {test_pred}")
-        
-        # 임시 파일 삭제
-        if os.path.exists(save_path):
-            os.remove(save_path)
-    
-    logger.info("\nAll models tested successfully! ✅")
+        print(f"Training Accuracy: {accuracy_score(y, predictions):.3f}")
+        print(f"F1 Score: {f1_score(y, predictions):.3f}")
+        print(f"ROC AUC: {roc_auc_score(y, probabilities[:, 1]):.3f}")
 
 
 if __name__ == "__main__":

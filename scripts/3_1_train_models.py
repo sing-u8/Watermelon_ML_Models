@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🍉 수박 당도 예측 모델 훈련 스크립트
+🍉 수박 음 높낮이 분류 모델 훈련 스크립트
 
 전통적인 ML 모델(GBT, SVM, Random Forest)을 훈련하고 평가하는 메인 스크립트입니다.
 
@@ -23,7 +23,7 @@ from typing import Dict, Any, List, Tuple
 import yaml
 import pandas as pd
 import numpy as np
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 # 프로젝트 루트 디렉토리를 Python path에 추가
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -79,7 +79,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
 
 
 def load_datasets() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """훈련/검증/테스트 데이터셋을 로드합니다."""
+    """훈련/검증/테스트 데이터셋을 로드하고 라벨을 인코딩합니다."""
     try:
         base_path = PROJECT_ROOT / 'data' / 'splits' / 'full_dataset'
         
@@ -87,11 +87,21 @@ def load_datasets() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         val_df = pd.read_csv(base_path / 'val.csv')
         test_df = pd.read_csv(base_path / 'test.csv')
         
+        # 라벨 인코딩: 'low' -> 0, 'high' -> 1
+        label_mapping = {'low': 0, 'high': 1}
+        
+        train_df['pitch_label'] = train_df['pitch_label'].map(label_mapping)
+        val_df['pitch_label'] = val_df['pitch_label'].map(label_mapping)
+        test_df['pitch_label'] = test_df['pitch_label'].map(label_mapping)
+        
         logger.info(f"데이터셋 로드 완료:")
         logger.info(f"  - 훈련: {len(train_df)}개")
         logger.info(f"  - 검증: {len(val_df)}개") 
         logger.info(f"  - 테스트: {len(test_df)}개")
-        logger.info(f"  - 당도 범위: {train_df['sweetness'].min():.1f} ~ {train_df['sweetness'].max():.1f} Brix")
+        
+        # 음 높낮이 분포 확인 (인코딩 후)
+        train_pitch_counts = train_df['pitch_label'].value_counts()
+        logger.info(f"  - 훈련 세트 음 높낮이 분포: {dict(train_pitch_counts)} (0: 낮음, 1: 높음)")
         
         return train_df, val_df, test_df
         
@@ -103,13 +113,13 @@ def load_datasets() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 def print_training_summary(config: Dict[str, Any]) -> None:
     """훈련 설정 요약을 출력합니다."""
     print("\n" + "="*80)
-    print("🍉 수박 당도 예측 모델 훈련 시작")
+    print("🍉 수박 음 높낮이 분류 모델 훈련 시작")
     print("="*80)
     
     print(f"📅 훈련 시작 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"🎯 성능 목표:")
-    print(f"   - MAE < {config['performance']['target_mae']:.1f} Brix")
-    print(f"   - R² > {config['performance']['target_r2']:.2f}")
+    print(f"   - 정확도 > {config['performance']['target_accuracy']:.1%}")
+    print(f"   - F1-score > {config['performance']['target_f1_score']:.2f}")
     
     print(f"🤖 훈련 모델:")
     for model_name in config['models'].keys():
@@ -135,14 +145,14 @@ def evaluate_and_visualize(
     logger.info("모델 평가 시작...")
     
     # 특징과 타겟 분리
-    feature_cols = [col for col in train_df.columns if col != 'sweetness']
+    feature_cols = [col for col in train_df.columns if col != 'pitch_label']
     
     X_train = train_df[feature_cols].values
-    y_train = train_df['sweetness'].values
+    y_train = train_df['pitch_label'].values
     X_val = val_df[feature_cols].values
-    y_val = val_df['sweetness'].values
+    y_val = val_df['pitch_label'].values
     X_test = test_df[feature_cols].values
-    y_test = test_df['sweetness'].values
+    y_test = test_df['pitch_label'].values
     
     # 평가자 초기화
     evaluator = ModelEvaluator()
@@ -168,17 +178,17 @@ def evaluate_and_visualize(
         
         # 훈련 세트 평가
         train_results = evaluator.evaluate_model_performance(
-            y_train, y_train_pred, model_name, "훈련"
+            y_train, y_train_pred, model_name, "훈련", "classification"
         )
         
         # 검증 세트 평가
         val_results = evaluator.evaluate_model_performance(
-            y_val, y_val_pred, model_name, "검증"
+            y_val, y_val_pred, model_name, "검증", "classification"
         )
         
         # 테스트 세트 평가
         test_results = evaluator.evaluate_model_performance(
-            y_test, y_test_pred, model_name, "테스트"
+            y_test, y_test_pred, model_name, "테스트", "classification"
         )
         
         # 결과 저장
@@ -207,9 +217,10 @@ def evaluate_and_visualize(
                 performance_data.append({
                     'Model': model_name,
                     'Dataset': dataset_type,
-                    'MAE': metrics.get('mae', 0) if isinstance(metrics, dict) else getattr(metrics, 'mae', 0),
-                    'R2': metrics.get('r2', 0) if isinstance(metrics, dict) else getattr(metrics, 'r2', 0),
-                    'RMSE': metrics.get('rmse', 0) if isinstance(metrics, dict) else getattr(metrics, 'rmse', 0)
+                    'Accuracy': metrics.get('accuracy', 0) if isinstance(metrics, dict) else getattr(metrics, 'accuracy', 0),
+                    'F1_Score': metrics.get('f1_score', 0) if isinstance(metrics, dict) else getattr(metrics, 'f1_score', 0),
+                    'Precision': metrics.get('precision', 0) if isinstance(metrics, dict) else getattr(metrics, 'precision', 0),
+                    'Recall': metrics.get('recall', 0) if isinstance(metrics, dict) else getattr(metrics, 'recall', 0)
                 })
         
         performance_df = pd.DataFrame(performance_data)
@@ -222,8 +233,7 @@ def evaluate_and_visualize(
         for model_name, results in all_results.items():
             predictions_df = pd.DataFrame({
                 'actual': y_test,
-                'predicted': results['predictions']['test'],
-                'residuals': y_test - results['predictions']['test']
+                'predicted': results['predictions']['test']
             })
             predictions_df.to_csv(
                 PROJECT_ROOT / 'experiments' / 'plots' / f'{model_name}_predictions.csv', 
@@ -234,13 +244,14 @@ def evaluate_and_visualize(
         for model_name, model in trainer.models.items():
             if hasattr(model.model, 'feature_importances_') and model.is_fitted:
                 try:
-                    importance_dict = model.get_feature_importance()
-                    if importance_dict and isinstance(importance_dict, dict):
-                        # 특징 중요도를 DataFrame으로 변환하여 저장
-                        importance_df = pd.DataFrame([
-                            {'feature': feature, 'importance': importance}
-                            for feature, importance in importance_dict.items()
-                        ]).sort_values('importance', ascending=False)
+                    importance_array = model.get_feature_importance()
+                    if importance_array is not None:
+                        # numpy 배열을 특징 이름과 함께 DataFrame으로 변환
+                        feature_names = feature_cols  # 이미 정의된 특징 이름 사용
+                        importance_df = pd.DataFrame({
+                            'feature': feature_names,
+                            'importance': importance_array
+                        }).sort_values('importance', ascending=False)
                         
                         importance_df.to_csv(
                             PROJECT_ROOT / 'experiments' / 'plots' / f'{model_name}_feature_importance.csv',
@@ -263,57 +274,58 @@ def print_results_summary(all_results: Dict[str, Any], config: Dict[str, Any]) -
     print("="*80)
     
     # 테스트 성능 요약 테이블
-    print(f"{'모델':<20} {'MAE':<8} {'R²':<8} {'RMSE':<8} {'목표달성':<10}")
-    print("-" * 70)
+    print(f"{'모델':<20} {'정확도':<8} {'F1':<8} {'정밀도':<8} {'재현율':<8} {'목표달성':<10}")
+    print("-" * 80)
     
     best_model = None
-    best_mae = float('inf')
-    target_mae = config['performance']['target_mae']
-    target_r2 = config['performance']['target_r2']
+    best_f1 = 0.0
+    target_accuracy = config['performance']['target_accuracy']
+    target_f1 = config['performance']['target_f1_score']
     
     for model_name, results in all_results.items():
         test_result = results['test']
         metrics = test_result['metrics'] if isinstance(test_result, dict) else test_result
-        mae = metrics.get('mae', 0) if isinstance(metrics, dict) else getattr(metrics, 'mae', 0)
-        r2 = metrics.get('r2', 0) if isinstance(metrics, dict) else getattr(metrics, 'r2', 0)
-        rmse = metrics.get('rmse', 0) if isinstance(metrics, dict) else getattr(metrics, 'rmse', 0)
+        accuracy = metrics.get('accuracy', 0) if isinstance(metrics, dict) else getattr(metrics, 'accuracy', 0)
+        f1 = metrics.get('f1_score', 0) if isinstance(metrics, dict) else getattr(metrics, 'f1_score', 0)
+        precision = metrics.get('precision', 0) if isinstance(metrics, dict) else getattr(metrics, 'precision', 0)
+        recall = metrics.get('recall', 0) if isinstance(metrics, dict) else getattr(metrics, 'recall', 0)
         
         # 목표 달성 여부
-        mae_ok = "✅" if mae < target_mae else "❌"
-        r2_ok = "✅" if r2 > target_r2 else "❌"
-        goal_status = f"{mae_ok} {r2_ok}"
+        accuracy_ok = "✅" if accuracy > target_accuracy else "❌"
+        f1_ok = "✅" if f1 > target_f1 else "❌"
+        goal_status = f"{accuracy_ok} {f1_ok}"
         
-        print(f"{model_name:<20} {mae:<8.3f} {r2:<8.3f} {rmse:<8.3f} {goal_status:<10}")
+        print(f"{model_name:<20} {accuracy:<8.3f} {f1:<8.3f} {precision:<8.3f} {recall:<8.3f} {goal_status:<10}")
         
-        # 최고 성능 모델 찾기 (MAE 기준)
-        if mae < best_mae:
-            best_mae = mae
+        # 최고 성능 모델 찾기 (F1-score 기준)
+        if f1 > best_f1:
+            best_f1 = f1
             best_model = model_name
     
-    print("-" * 70)
-    print(f"🏆 최고 성능 모델: {best_model} (MAE: {best_mae:.3f})")
+    print("-" * 80)
+    print(f"🏆 최고 성능 모델: {best_model} (F1: {best_f1:.3f})")
     
     # 목표 달성 요약
     print(f"\n🎯 성능 목표 달성 현황:")
-    models_meeting_mae = sum(1 for results in all_results.values() 
-                           if (results['test']['metrics'].get('mae', float('inf')) if isinstance(results['test'], dict) 
-                               else getattr(results['test'], 'mae', float('inf'))) < target_mae)
-    models_meeting_r2 = sum(1 for results in all_results.values() 
-                          if (results['test']['metrics'].get('r2', 0) if isinstance(results['test'], dict) 
-                              else getattr(results['test'], 'r2', 0)) > target_r2)
+    models_meeting_accuracy = sum(1 for results in all_results.values() 
+                                if (results['test']['metrics'].get('accuracy', 0) if isinstance(results['test'], dict) 
+                                    else getattr(results['test'], 'accuracy', 0)) > target_accuracy)
+    models_meeting_f1 = sum(1 for results in all_results.values() 
+                          if (results['test']['metrics'].get('f1_score', 0) if isinstance(results['test'], dict) 
+                              else getattr(results['test'], 'f1_score', 0)) > target_f1)
     total_models = len(all_results)
     
-    print(f"   - MAE < {target_mae}: {models_meeting_mae}/{total_models} 모델")
-    print(f"   - R² > {target_r2}: {models_meeting_r2}/{total_models} 모델")
+    print(f"   - 정확도 > {target_accuracy:.1%}: {models_meeting_accuracy}/{total_models} 모델")
+    print(f"   - F1-score > {target_f1:.2f}: {models_meeting_f1}/{total_models} 모델")
     
-    if best_mae < target_mae:
-        print(f"   ✅ 주요 목표 달성! (MAE < {target_mae})")
+    if best_f1 > target_f1:
+        print(f"   ✅ 주요 목표 달성! (F1 > {target_f1:.2f})")
     else:
-        print(f"   ❌ 주요 목표 미달성 (MAE >= {target_mae})")
+        print(f"   ❌ 주요 목표 미달성 (F1 <= {target_f1:.2f})")
     
     print("="*80 + "\n")
     
-    return best_model
+    return best_model or "Unknown"
 
 
 def save_best_model(trainer: MLTrainer, best_model_name: str) -> None:
@@ -341,8 +353,8 @@ def save_best_model(trainer: MLTrainer, best_model_name: str) -> None:
             'training_date': datetime.now().isoformat(),
             'feature_count': len(best_model.feature_names_) if hasattr(best_model, 'feature_names_') else 51,
             'performance': {
-                'test_mae': float(trainer.latest_results[best_model_name]['test'].mae),
-                'test_r2': float(trainer.latest_results[best_model_name]['test'].r2)
+                'test_accuracy': float(trainer.latest_results[best_model_name]['test'].accuracy),
+                'test_f1_score': float(trainer.latest_results[best_model_name]['test'].f1_score)
             }
         }
         
@@ -376,13 +388,10 @@ def save_training_results(
                 performance_data.append({
                     'model': model_name,
                     'dataset': dataset_type,
-                    'mae': metrics.get('mae', 0) if isinstance(metrics, dict) else getattr(metrics, 'mae', 0),
-                    'mse': metrics.get('mse', 0) if isinstance(metrics, dict) else getattr(metrics, 'mse', 0),
-                    'rmse': metrics.get('rmse', 0) if isinstance(metrics, dict) else getattr(metrics, 'rmse', 0),
-                    'r2': metrics.get('r2', 0) if isinstance(metrics, dict) else getattr(metrics, 'r2', 0),
-                    'mape': metrics.get('mape', 0) if isinstance(metrics, dict) else getattr(metrics, 'mape', 0),
-                    'accuracy_0_5': metrics.get('accuracy_0_5', 0) if isinstance(metrics, dict) else 0,
-                    'accuracy_1_0': metrics.get('accuracy_1_0', 0) if isinstance(metrics, dict) else 0,
+                    'accuracy': metrics.get('accuracy', 0) if isinstance(metrics, dict) else getattr(metrics, 'accuracy', 0),
+                    'f1_score': metrics.get('f1_score', 0) if isinstance(metrics, dict) else getattr(metrics, 'f1_score', 0),
+                    'precision': metrics.get('precision', 0) if isinstance(metrics, dict) else getattr(metrics, 'precision', 0),
+                    'recall': metrics.get('recall', 0) if isinstance(metrics, dict) else getattr(metrics, 'recall', 0),
                     'performance_grade': result.get('performance_grade', 'N/A') if isinstance(result, dict) else 'N/A'
                 })
         
@@ -423,7 +432,7 @@ def main():
     """메인 실행 함수"""
     
     # 명령행 인수 파싱
-    parser = argparse.ArgumentParser(description='수박 당도 예측 모델 훈련')
+    parser = argparse.ArgumentParser(description='수박 음 높낮이 분류 모델 훈련')
     parser.add_argument('--config', default='configs/models.yaml', help='설정 파일 경로')
     parser.add_argument('--quick', action='store_true', help='빠른 테스트 모드 (작은 하이퍼파라미터)')
     parser.add_argument('--no-viz', action='store_true', help='시각화 건너뛰기')
@@ -458,13 +467,13 @@ def main():
         trainer = create_trainer_from_config(str(config_path))
         
         # 특징과 타겟 분리
-        feature_cols = [col for col in train_df.columns if col != 'sweetness']
+        feature_cols = [col for col in train_df.columns if col != 'pitch_label']
         X_train = train_df[feature_cols].values
-        y_train = train_df['sweetness'].values
+        y_train = train_df['pitch_label'].values
         X_val = val_df[feature_cols].values  
-        y_val = val_df['sweetness'].values
+        y_val = val_df['pitch_label'].values
         X_test = test_df[feature_cols].values
-        y_test = test_df['sweetness'].values
+        y_test = test_df['pitch_label'].values
         
         # 데이터 딕셔너리 생성
         data = {
@@ -507,14 +516,14 @@ def main():
                 metrics = test_result['metrics'] if isinstance(test_result, dict) else test_result
                 
                 # numpy 객체를 float로 안전하게 변환
-                mae = float(metrics.get('mae', 0)) if hasattr(metrics.get('mae', 0), 'item') else float(metrics.get('mae', 0))
-                r2 = float(metrics.get('r2', 0)) if hasattr(metrics.get('r2', 0), 'item') else float(metrics.get('r2', 0))
-                mse = float(metrics.get('mse', 0)) if hasattr(metrics.get('mse', 0), 'item') else float(metrics.get('mse', 0))
+                accuracy = float(metrics.get('accuracy', 0)) if hasattr(metrics.get('accuracy', 0), 'item') else float(metrics.get('accuracy', 0))
+                f1_score = float(metrics.get('f1_score', 0)) if hasattr(metrics.get('f1_score', 0), 'item') else float(metrics.get('f1_score', 0))
+                precision = float(metrics.get('precision', 0)) if hasattr(metrics.get('precision', 0), 'item') else float(metrics.get('precision', 0))
                 
                 compatible_test_performance[model_name] = {
-                    'mae': mae,
-                    'r2': r2,
-                    'mse': mse
+                    'accuracy': accuracy,
+                    'f1_score': f1_score,
+                    'precision': precision
                 }
             
             # 3_simple_train.py 호환 형식으로 저장

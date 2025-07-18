@@ -1,5 +1,5 @@
 """
-🍉 수박 당도 예측 ML 프로젝트 - 데이터 분할 모듈
+🍉 수박 음 높낮이 분류 ML 프로젝트 - 데이터 분할 모듈
 DataSplitter 클래스: Train/Validation/Test 세트 분할 및 균형 확인
 """
 
@@ -22,7 +22,7 @@ class DataSplitter:
     데이터셋을 Train/Validation/Test 세트로 분할하는 클래스
     
     기능:
-    - 층화 샘플링 (당도 구간별 균등 분할)
+    - 층화 샘플링 (음 높낮이 클래스별 균등 분할)
     - 분할 비율 설정 가능
     - 분할 결과 검증 및 시각화
     - 재현 가능한 분할 (random seed)
@@ -56,64 +56,23 @@ class DataSplitter:
             'train_samples': 0,
             'val_samples': 0,
             'test_samples': 0,
-            'sweetness_bins': 0,
+            'class_distribution': {},
             'split_time': 0.0
         }
         
         logger.info(f"DataSplitter 초기화: Train({train_ratio:.1%}), "
                    f"Val({val_ratio:.1%}), Test({test_ratio:.1%})")
     
-    def _create_sweetness_bins(self, sweetness_values: np.ndarray, 
-                              n_bins: Optional[int] = None) -> np.ndarray:
-        """
-        당도 값을 구간별로 분류
-        
-        Args:
-            sweetness_values (np.ndarray): 당도 값 배열
-            n_bins (Optional[int]): 구간 수 (None이면 자동 결정)
-            
-        Returns:
-            np.ndarray: 구간 레이블 배열
-        """
-        if n_bins is None:
-            # 샘플 수에 따라 구간 수 자동 결정
-            n_samples = len(sweetness_values)
-            if n_samples < 50:
-                n_bins = 3
-            elif n_samples < 100:
-                n_bins = 4
-            else:
-                n_bins = 5
-        
-        # 당도 범위에 따른 구간 분할
-        min_sweetness = np.min(sweetness_values)
-        max_sweetness = np.max(sweetness_values)
-        
-        # 구간 경계 생성
-        bin_edges = np.linspace(min_sweetness, max_sweetness, n_bins + 1)
-        
-        # 구간 레이블 할당
-        bin_labels = np.digitize(sweetness_values, bin_edges) - 1
-        
-        # 마지막 구간 조정 (최대값이 포함되도록)
-        bin_labels[bin_labels >= n_bins] = n_bins - 1
-        
-        self.stats['sweetness_bins'] = n_bins
-        
-        logger.debug(f"당도 구간 생성: {n_bins}개 구간, 범위 [{min_sweetness:.1f}, {max_sweetness:.1f}]")
-        
-        return bin_labels, bin_edges
-    
     def split_dataset(self, features_df: pd.DataFrame, 
-                     target_column: str = 'sweetness',
-                     stratify_bins: Optional[int] = None) -> Dict[str, pd.DataFrame]:
+                     target_column: str = 'pitch_label',
+                     stratify: bool = True) -> Dict[str, pd.DataFrame]:
         """
         데이터셋을 Train/Validation/Test로 분할
         
         Args:
             features_df (pd.DataFrame): 특징과 타겟을 포함한 DataFrame
-            target_column (str): 타겟 컬럼명 (기본값: 'sweetness')
-            stratify_bins (Optional[int]): 층화 샘플링용 구간 수
+            target_column (str): 타겟 컬럼명 (기본값: 'pitch_label')
+            stratify (bool): 층화 샘플링 사용 여부 (기본값: True)
             
         Returns:
             Dict[str, pd.DataFrame]: {'train': train_df, 'val': val_df, 'test': test_df}
@@ -133,16 +92,20 @@ class DataSplitter:
         X = features_df.drop(columns=[target_column])
         y = features_df[target_column]
         
-        # 층화 샘플링을 위한 구간 생성
-        stratify_labels, bin_edges = self._create_sweetness_bins(
-            y.values, n_bins=stratify_bins
-        )
+        # 클래스 분포 확인
+        class_counts = y.value_counts()
+        self.stats['class_distribution'] = class_counts.to_dict()
+        
+        logger.info(f"클래스 분포: {dict(class_counts)}")
+        
+        # 층화 샘플링 설정
+        stratify_labels = y if stratify else None
         
         # 1단계: Train과 (Val+Test) 분할
         train_val_ratio = self.val_ratio + self.test_ratio
         
-        X_train, X_temp, y_train, y_temp, stratify_train, stratify_temp = train_test_split(
-            X, y, stratify_labels,
+        X_train, X_temp, y_train, y_temp = train_test_split(
+            X, y,
             test_size=train_val_ratio,
             stratify=stratify_labels,
             random_state=self.random_state
@@ -150,6 +113,9 @@ class DataSplitter:
         
         # 2단계: (Val+Test)를 Val과 Test로 분할
         val_test_ratio = self.val_ratio / train_val_ratio
+        
+        # Val/Test 분할 시에도 층화 샘플링 적용
+        stratify_temp = y_temp if stratify else None
         
         X_val, X_test, y_val, y_test = train_test_split(
             X_temp, y_temp,
@@ -186,10 +152,15 @@ class DataSplitter:
         logger.info(f"  - Val: {len(val_df)}개 ({len(val_df)/len(features_df):.1%})")
         logger.info(f"  - Test: {len(test_df)}개 ({len(test_df)/len(features_df):.1%})")
         
+        # 각 세트별 클래스 분포 확인
+        for split_name, split_df in split_result.items():
+            split_class_counts = split_df[target_column].value_counts()
+            logger.info(f"  {split_name} 클래스 분포: {dict(split_class_counts)}")
+        
         return split_result
     
     def validate_split(self, split_data: Dict[str, pd.DataFrame], 
-                      target_column: str = 'sweetness') -> Dict:
+                      target_column: str = 'pitch_label') -> Dict:
         """
         분할 결과 검증
         
@@ -204,7 +175,7 @@ class DataSplitter:
         
         validation_result = {
             'split_ratios': {},
-            'sweetness_distributions': {},
+            'class_distributions': {},
             'statistical_tests': {},
             'issues': []
         }
@@ -220,40 +191,32 @@ class DataSplitter:
                 'samples': len(df)
             }
         
-        # 타겟 분포 비교
+        # 클래스 분포 비교
         for split_name, df in split_data.items():
-            sweetness_values = df[target_column]
-            validation_result['sweetness_distributions'][split_name] = {
-                'mean': float(sweetness_values.mean()),
-                'std': float(sweetness_values.std()),
-                'min': float(sweetness_values.min()),
-                'max': float(sweetness_values.max()),
-                'median': float(sweetness_values.median()),
-                'q25': float(sweetness_values.quantile(0.25)),
-                'q75': float(sweetness_values.quantile(0.75))
+            class_counts = df[target_column].value_counts()
+            validation_result['class_distributions'][split_name] = {
+                'counts': class_counts.to_dict(),
+                'total': len(df),
+                'balance_ratio': class_counts.min() / class_counts.max() if len(class_counts) > 1 else 1.0
             }
         
-        # 분포 균형성 검사
-        train_mean = validation_result['sweetness_distributions']['train']['mean']
-        train_std = validation_result['sweetness_distributions']['train']['std']
+        # 클래스 균형성 검사
+        train_class_counts = validation_result['class_distributions']['train']['counts']
         
         for split_name in ['val', 'test']:
-            split_mean = validation_result['sweetness_distributions'][split_name]['mean']
-            split_std = validation_result['sweetness_distributions'][split_name]['std']
+            split_class_counts = validation_result['class_distributions'][split_name]['counts']
             
-            # 평균 차이 검사
-            mean_diff = abs(split_mean - train_mean)
-            if mean_diff > 0.5:  # 0.5 Brix 이상 차이
-                validation_result['issues'].append(
-                    f"{split_name} 세트의 평균 당도가 train과 {mean_diff:.2f} Brix 차이"
-                )
-            
-            # 표준편차 차이 검사
-            std_ratio = split_std / train_std if train_std > 0 else 1.0
-            if std_ratio < 0.7 or std_ratio > 1.3:  # 30% 이상 차이
-                validation_result['issues'].append(
-                    f"{split_name} 세트의 표준편차가 train과 {abs(1-std_ratio):.1%} 차이"
-                )
+            # 각 클래스별 비율 차이 검사
+            for class_name in train_class_counts.keys():
+                if class_name in split_class_counts:
+                    train_ratio = train_class_counts[class_name] / validation_result['class_distributions']['train']['total']
+                    split_ratio = split_class_counts[class_name] / validation_result['class_distributions'][split_name]['total']
+                    ratio_diff = abs(split_ratio - train_ratio)
+                    
+                    if ratio_diff > 0.1:  # 10% 이상 차이
+                        validation_result['issues'].append(
+                            f"{split_name} 세트의 {class_name} 클래스 비율이 train과 {ratio_diff:.1%} 차이"
+                        )
         
         # 분할 비율 검사
         for split_name, ratio_info in validation_result['split_ratios'].items():
@@ -270,6 +233,16 @@ class DataSplitter:
                 validation_result['issues'].append(
                     f"{split_name} 세트의 샘플 수가 부족: {len(df)}개 < {min_samples_required}개"
                 )
+        
+        # 클래스별 최소 샘플 수 검사
+        min_class_samples = 5  # 각 클래스당 최소 5개 샘플
+        for split_name, df in split_data.items():
+            class_counts = df[target_column].value_counts()
+            for class_name, count in class_counts.items():
+                if count < min_class_samples:
+                    validation_result['issues'].append(
+                        f"{split_name} 세트의 {class_name} 클래스 샘플 수가 부족: {count}개 < {min_class_samples}개"
+                    )
         
         # 전체 검증 결과
         if len(validation_result['issues']) == 0:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🍉 수박 당도 예측 모델 간단 훈련 스크립트
+🍉 수박 음 높낮이 분류 모델 간단 훈련 스크립트
 
 핵심 기능만 포함한 간단한 버전
 """
@@ -19,11 +19,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.models.traditional_ml import ModelFactory
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 def main():
     """간단한 훈련 실행"""
-    print("🍉 수박 당도 예측 모델 간단 훈련 시작")
+    print("🍉 수박 음 높낮이 분류 모델 간단 훈련 시작")
     print("=" * 50)
     
     # 1. 데이터 로드
@@ -33,18 +33,22 @@ def main():
     test_df = pd.read_csv(PROJECT_ROOT / 'data' / 'splits' / 'full_dataset' / 'test.csv')
     
     # 특징과 타겟 분리
-    feature_cols = [col for col in train_df.columns if col != 'sweetness']
+    feature_cols = [col for col in train_df.columns if col != 'pitch_label']
     X_train = train_df[feature_cols].values
-    y_train = train_df['sweetness'].values
+    y_train = train_df['pitch_label'].values
     X_val = val_df[feature_cols].values
-    y_val = val_df['sweetness'].values
+    y_val = val_df['pitch_label'].values
     X_test = test_df[feature_cols].values
-    y_test = test_df['sweetness'].values
+    y_test = test_df['pitch_label'].values
     
     print(f"   - 훈련: {len(X_train)}개")
     print(f"   - 검증: {len(X_val)}개")
     print(f"   - 테스트: {len(X_test)}개")
     print(f"   - 특징 수: {len(feature_cols)}개")
+    
+    # 음 높낮이 분포 확인
+    train_pitch_counts = train_df['pitch_label'].value_counts()
+    print(f"   - 훈련 세트 음 높낮이 분포: {dict(train_pitch_counts)}")
     
     # 2. 특징 스케일링
     print("2. 특징 스케일링 중...")
@@ -78,11 +82,11 @@ def main():
     
     # 4. 평가
     print("4. 모델 평가 중...")
-    print(f"{'모델':<6} {'데이터셋':<6} {'MAE':<8} {'R²':<8} {'RMSE':<8}")
-    print("-" * 50)
+    print(f"{'모델':<6} {'데이터셋':<6} {'정확도':<8} {'F1':<8} {'정밀도':<8} {'재현율':<8}")
+    print("-" * 60)
     
     best_model_name = None
-    best_mae = float('inf')
+    best_f1 = 0.0
     
     for model_name, model in models.items():
         for dataset_name, X_data, y_data in [
@@ -91,42 +95,50 @@ def main():
             ('테스트', X_test_scaled, y_test)
         ]:
             y_pred = model.predict(X_data)
-            mae = mean_absolute_error(y_data, y_pred)
-            r2 = r2_score(y_data, y_pred)
-            rmse = np.sqrt(mean_squared_error(y_data, y_pred))
+            accuracy = accuracy_score(y_data, y_pred)
+            f1 = f1_score(y_data, y_pred, average='weighted')
+            precision = precision_score(y_data, y_pred, average='weighted')
+            recall = recall_score(y_data, y_pred, average='weighted')
             
-            print(f"{model_name:<6} {dataset_name:<6} {mae:<8.3f} {r2:<8.3f} {rmse:<8.3f}")
+            print(f"{model_name:<6} {dataset_name:<6} {accuracy:<8.3f} {f1:<8.3f} {precision:<8.3f} {recall:<8.3f}")
             
             # 테스트 성능으로 최고 모델 선정
-            if dataset_name == '테스트' and mae < best_mae:
-                best_mae = mae
+            if dataset_name == '테스트' and f1 > best_f1:
+                best_f1 = f1
                 best_model_name = model_name
     
-    print("-" * 50)
-    print(f"🏆 최고 성능 모델: {best_model_name} (테스트 MAE: {best_mae:.3f})")
+    print("-" * 60)
+    print(f"🏆 최고 성능 모델: {best_model_name} (테스트 F1: {best_f1:.3f})")
     
     # 5. 목표 달성 확인
     print("\n5. 성능 목표 달성 확인:")
-    target_mae = 1.0
-    target_r2 = 0.8
+    target_accuracy = 0.90  # 90%
+    target_f1 = 0.85       # 0.85
     
     test_results = {}
     for model_name, model in models.items():
         y_pred = model.predict(X_test_scaled)
-        mae = mean_absolute_error(y_test, y_pred)
-        r2 = r2_score(y_test, y_pred)
-        test_results[model_name] = {'mae': mae, 'r2': r2}
+        accuracy = accuracy_score(y_test, y_pred)
+        f1 = f1_score(y_test, y_pred, average='weighted')
+        precision = precision_score(y_test, y_pred, average='weighted')
+        recall = recall_score(y_test, y_pred, average='weighted')
+        test_results[model_name] = {
+            'accuracy': accuracy, 
+            'f1_score': f1, 
+            'precision': precision, 
+            'recall': recall
+        }
     
-    models_meeting_mae = sum(1 for result in test_results.values() if result['mae'] < target_mae)
-    models_meeting_r2 = sum(1 for result in test_results.values() if result['r2'] > target_r2)
+    models_meeting_accuracy = sum(1 for result in test_results.values() if result['accuracy'] > target_accuracy)
+    models_meeting_f1 = sum(1 for result in test_results.values() if result['f1_score'] > target_f1)
     
-    print(f"   - MAE < {target_mae}: {models_meeting_mae}/3 모델 달성")
-    print(f"   - R² > {target_r2}: {models_meeting_r2}/3 모델 달성")
+    print(f"   - 정확도 > {target_accuracy:.1%}: {models_meeting_accuracy}/3 모델 달성")
+    print(f"   - F1-score > {target_f1:.2f}: {models_meeting_f1}/3 모델 달성")
     
-    if best_mae < target_mae:
-        print(f"   ✅ 주요 목표 달성! (MAE < {target_mae})")
+    if best_f1 > target_f1:
+        print(f"   ✅ 주요 목표 달성! (F1 > {target_f1:.2f})")
     else:
-        print(f"   ❌ 주요 목표 미달성 (MAE >= {target_mae})")
+        print(f"   ❌ 주요 목표 미달성 (F1 <= {target_f1:.2f})")
     
     # 6. 최고 성능 모델 저장
     print("\n6. 모델 저장 중...")
@@ -146,7 +158,7 @@ def main():
         'timestamp': datetime.now().isoformat(),
         'best_model': best_model_name,
         'test_performance': test_results,
-        'target_achieved': best_mae < target_mae,
+        'target_achieved': best_f1 > target_f1,
         'feature_count': len(feature_cols)
     }
     

@@ -1,14 +1,14 @@
-# 🍉 전통적인 ML 모델 기반 수박 당도 예측 프로젝트 규칙서
+# 🍉 전통적인 ML 모델 기반 수박 음 높낮이 분류 프로젝트 규칙서
 
 ## 프로젝트 개요
 
-수박 소리 데이터를 활용하여 그래디언트 부스팅 트리(GBT), 서포트 벡터 머신(SVM), 랜덤 포레스트 모델로 당도를 예측하는 머신러닝 프로젝트
+수박 소리 데이터를 활용하여 그래디언트 부스팅 트리(GBT), 서포트 벡터 머신(SVM), 랜덤 포레스트 모델로 **수박의 음이 낮은 것과 높은 것을 분류**하는 머신러닝 프로젝트
 
 ### 목표
 
-- 오디오 신호 → 음향 특징 추출 → 전통적인 ML 분류/회귀 파이프라인 구축
-- scikit-learn 기반 GBT, SVM, Random Forest 모델 개발
-- CNN 대비 성능 우위 검증 (목표: MAE < 1.0 Brix)
+- 오디오 신호 → 음향 특징 추출 → 전통적인 ML 분류 파이프라인 구축
+- scikit-learn 기반 GBT, SVM, Random Forest 분류 모델 개발
+- CNN 대비 성능 우위 검증 (목표: 정확도 > 90%)
 - iOS 앱 배포를 위한 모델 변환 (scikit-learn → ONNX → Core ML)
 
 ## 기술 스택 & 아키텍처
@@ -16,7 +16,7 @@
 ### Core Technologies
 
 - **Framework**: scikit-learn
-- **Model Types**: GradientBoostingRegressor, SVR, RandomForestRegressor
+- **Model Types**: GradientBoostingClassifier, SVC, RandomForestClassifier
 - **Audio Processing**: librosa
 - **Data Analysis**: pandas, numpy
 - **Python Version**: Python 3.8+
@@ -28,7 +28,7 @@ Audio Files (.wav, .m4a, .mp3)
     ↓ (librosa)
 Audio Feature Extraction (51개 특징)
     ↓ (scikit-learn)
-Sweetness Prediction (회귀)
+Pitch Classification (낮음/높음)
 ```
 
 ### 모델 저장 파이프라인
@@ -45,8 +45,6 @@ Production Ready Model
 
 ```
 scikit-learn Model (.pkl)
-    ↓ (skl2onnx)
-ONNX Model (.onnx)
     ↓ (coremltools)
 Core ML Model (.mlmodel)
     ↓ (iOS App)
@@ -121,25 +119,24 @@ Mobile Deployment
 
 ### 데이터 구조 및 조직
 
-- **폴더 명명 규칙**: `xx_yy` 형태
+- **폴더 명명 규칙**: `xx_pitch` 형태
 
   - `xx`: 수박 샘플번호 (01, 02, 03, ..., 19)
-  - `yy`: 당도값 (8.7 ~ 12.7 Brix)
-  - 예시: `01_10.5`, `15_9.4`, `13_12.7`
+  - `pitch`: 음 높낮이 라벨 (low, high)
+  - 예시: `01_low`, `15_high`, `13_low`
 
 - **디렉토리 구조**:
 
   ```
   data/raw/
-  ├── xx_yy/               # 각 수박 샘플 폴더
-  │   ├── audios/          # 오디오 파일 저장 폴더
-  │   │   ├── 1.wav        # 개별 오디오 파일들
-  │   │   ├── 2.wav
-  │   │   └── ...
-  │   └── (기타 폴더들)    # picture, chu, audio 등
+  ├── xx_pitch/       # 각 수박 샘플 폴더
+  │   ├── 1.m4a        # 개별 오디오 파일들
+  │   ├── 2.m4a
+  │   └── ...
+  │
   ```
 
-- **오디오 파일 위치**: `data/raw/xx_yy/audios/*.wav`
+- **오디오 파일 위치**: `data/raw/xx_pitch/*.m4a`
 - **지원 형식**: .wav, .m4a, .mp3 (librosa 호환)
 - **파일 개수**: 각 수박당 약 9개 내외의 오디오 샘플
 
@@ -162,8 +159,8 @@ Mobile Deployment
 
 ### 라벨링 규칙
 
-- 당도값은 float 타입으로 처리 (8.7 ~ 12.7 Brix)
-- 회귀 문제로 접근 (연속값 예측)
+- 음 높낮이는 이진 분류로 처리 (0: 낮음, 1: 높음)
+- 분류 문제로 접근 (이진 분류)
 - 데이터 분할: Train(70%) / Validation(15%) / Test(15%)
 
 ## ML 모델 개발 규칙
@@ -192,14 +189,14 @@ Mobile Deployment
 
 ### 훈련 가이드라인
 
-- **Loss Function**: MAE 또는 MSE (회귀)
+- **Loss Function**: Cross-entropy (분류)
 - **교차 검증**: 5-fold CV 필수
 - **특징 스케일링**: StandardScaler 또는 MinMaxScaler (SVM 필수)
 - **하이퍼파라미터 튜닝**: GridSearchCV 또는 RandomizedSearchCV
 
 ### 실험 관리
 
-- **메트릭 추적**: MAE, MSE, R² score, 훈련 시간
+- **메트릭 추적**: 정확도, F1-score, Precision, Recall, 훈련 시간
 - **특징 중요도**: 각 모델별 특징 기여도 분석
 - **교차 검증**: 안정성 평가를 위한 CV 점수 기록
 - **재현성**: random seed 고정 (42)
@@ -208,8 +205,8 @@ Mobile Deployment
 
 ### 모델 성능 목표
 
-- **MAE < 1.0 Brix**: 현재 CNN 대비 개선
-- **R² > 0**: 설명력 확보
+- **정확도 > 90%**: 현재 CNN 대비 개선
+- **F1-score > 0.85**: 클래스 불균형 고려
 - **훈련 시간 < 10분**: 빠른 실험 iteration
 - **추론 시간 < 1ms**: 실시간 예측 가능
 
@@ -221,7 +218,7 @@ Mobile Deployment
 
 ### 앙상블 최적화
 
-- **Voting Regressor**: 3개 모델의 평균 예측
+- **Voting Classifier**: 3개 모델의 다수결 예측
 - **Stacking**: 메타 모델을 통한 고차원 앙상블
 - **가중 평균**: 검증 성능 기반 가중치 할당
 
@@ -279,10 +276,10 @@ scipy>=1.9.0
 
 ### 성능 평가 지표
 
-- **회귀 메트릭**: MAE, MSE, RMSE, R², MAPE
+- **분류 메트릭**: 정확도, F1-score, Precision, Recall, AUC-ROC
 - **통계적 유의성**: t-test, Wilcoxon signed-rank test
-- **예측 구간**: 불확실성 정량화
-- **시각적 평가**: 잔차 플롯, Q-Q 플롯
+- **예측 확률**: 불확실성 정량화
+- **시각적 평가**: 혼동 행렬, ROC 곡선
 
 ### 단위 테스트
 
@@ -331,8 +328,8 @@ scipy>=1.9.0
 ### 데이터 품질 관리
 
 - **일관된 녹음 환경**: 배경 소음, 마이크 거리 통제
-- **라벨 정확성**: 당도 측정 오차 최소화
-- **데이터 균형**: 당도 구간별 샘플 수 균형
+- **라벨 정확성**: 음 높낮이 판단 기준 명확화
+- **데이터 균형**: 낮음/높음 클래스 샘플 수 균형
 
 ### 과적합 방지
 
@@ -348,17 +345,10 @@ scipy>=1.9.0
 
 ### 성능 검증
 
-- **베이스라인**: 단순 평균 예측과 비교
+- **베이스라인**: 단순 랜덤 분류와 비교
 - **CNN 비교**: 기존 VGG 모델 대비 성능 평가
 - **통계적 검정**: 성능 차이의 유의성 검증
 
 ---
 
-이 규칙을 따라 체계적이고 재현 가능한 전통적인 ML 프로젝트를 구축하세요. 🚀
-description:
-globs:
-alwaysApply: false
-
----
-
----
+이 규칙을 따라 체계적이고 재현 가능한 전통적인 ML 분류 프로젝트를 구축하세요. 🚀

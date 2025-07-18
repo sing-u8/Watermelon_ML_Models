@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-🍉 수박 당도 예측 ML 프로젝트 - 데이터셋 구축 스크립트
-전체 수박 오디오 데이터에서 특징을 추출하고 데이터셋을 구축합니다.
+🍉 수박 음 높낮이 분류 ML 프로젝트 - 데이터셋 구축 스크립트
+전체 수박 오디오 데이터에서 특징을 추출하고 분류용 데이터셋을 구축합니다.
 """
 
 import sys
@@ -39,18 +39,17 @@ def analyze_metadata():
     df = pd.read_csv(metadata_path)
     logger.info(f"총 데이터 포인트: {len(df)}개")
     logger.info(f"유니크 수박: {df['watermelon_id'].nunique()}개")
-    logger.info(f"당도 범위: {df['sweetness'].min():.1f} ~ {df['sweetness'].max():.1f} Brix")
-    logger.info(f"평균 당도: {df['sweetness'].mean():.2f} ± {df['sweetness'].std():.2f} Brix")
     
-    # 당도 분포 확인
-    sweetness_bins = pd.cut(df['sweetness'], bins=5)
-    logger.info("당도 분포:")
-    try:
-        bin_counts = pd.Series(sweetness_bins).value_counts().sort_index()
-        for bin_range, count in bin_counts.items():
-            logger.info(f"  {bin_range}: {count}개")
-    except Exception as e:
-        logger.warning(f"당도 분포 분석 건너뜀: {e}")
+    # 음 높낮이 분포 확인
+    pitch_counts = df['pitch_label'].value_counts()
+    logger.info("음 높낮이 분포:")
+    for pitch, count in pitch_counts.items():
+        logger.info(f"  {pitch}: {count}개 ({count/len(df)*100:.1f}%)")
+    
+    # 수박별 음 높낮이 분포 확인
+    logger.info("수박별 음 높낮이 분포:")
+    watermelon_pitch = df.groupby(['watermelon_id', 'pitch_label']).size().unstack(fill_value=0)
+    logger.info(f"\n{watermelon_pitch}")
     
     return df
 
@@ -73,13 +72,13 @@ def build_full_dataset():
     
     # 메타데이터에서 파일 경로 추출
     file_paths = []
-    sweetness_values = []
+    pitch_labels = []
     
     for _, row in metadata_df.iterrows():
         file_path = project_root / row['file_path']
         if file_path.exists():
             file_paths.append(file_path)
-            sweetness_values.append(row['sweetness'])
+            pitch_labels.append(row['pitch_label'])
         else:
             logger.warning(f"파일이 존재하지 않습니다: {file_path}")
     
@@ -106,7 +105,7 @@ def build_full_dataset():
         logger.info(f"총 처리 시간: {processing_time:.1f}초")
         logger.info(f"평균 파일당 처리 시간: {build_result['avg_processing_time']:.3f}초")
         logger.info(f"데이터셋 크기: {build_result['feature_shape']}")
-        logger.info(f"특징 개수: {build_result['feature_shape'][1] - 1}")  # -1 for sweetness column
+        logger.info(f"특징 개수: {build_result['feature_shape'][1] - 1}")  # -1 for pitch_label column
         
         # 통계 확인
         logger.info(f"DatasetBuilder 결과: {build_result}")
@@ -133,11 +132,11 @@ def split_dataset():
     # DataSplitter 초기화
     splitter = DataSplitter(train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, random_state=42)
     
-    # 데이터 분할 실행
+    # 데이터 분할 실행 (분류 문제이므로 stratify 사용)
     split_data = splitter.split_dataset(
         features_df=features_df,
-        target_column='sweetness',
-        stratify_bins=5
+        target_column='pitch_label',
+        stratify=True  # 분류 문제이므로 stratify=True
     )
     
     # 분할된 데이터 저장
@@ -145,7 +144,7 @@ def split_dataset():
     saved_files = splitter.save_splits(split_data, output_dir)
     
     # 분할 검증
-    validation_result = splitter.validate_split(split_data, target_column='sweetness')
+    validation_result = splitter.validate_split(split_data, target_column='pitch_label')
     
     split_result = True
     
@@ -179,8 +178,13 @@ def verify_dataset():
         if file_path.exists():
             split_df = pd.read_csv(file_path)
             logger.info(f"{split_name.upper()} 세트: {split_df.shape[0]}개 샘플")
-            logger.info(f"  당도 범위: {split_df['sweetness'].min():.1f} ~ {split_df['sweetness'].max():.1f}")
-            logger.info(f"  평균 당도: {split_df['sweetness'].mean():.2f} ± {split_df['sweetness'].std():.2f}")
+            
+            # 음 높낮이 분포 확인
+            pitch_counts = split_df['pitch_label'].value_counts()
+            logger.info(f"  음 높낮이 분포:")
+            for pitch, count in pitch_counts.items():
+                logger.info(f"    {pitch}: {count}개 ({count/len(split_df)*100:.1f}%)")
+            
             total_samples += split_df.shape[0]
         else:
             logger.warning(f"{split_name} 파일이 없습니다: {file_path}")
@@ -210,7 +214,7 @@ def verify_dataset():
 
 def main():
     """메인 함수"""
-    logger.info("🍉 수박 당도 예측 데이터셋 구축 시작")
+    logger.info("🍉 수박 음 높낮이 분류 데이터셋 구축 시작")
     logger.info("=" * 60)
     
     try:
@@ -230,7 +234,7 @@ def main():
             return False
         
         logger.info("=" * 60)
-        logger.info("🎉 데이터셋 구축이 성공적으로 완료되었습니다!")
+        logger.info("🎉 분류용 데이터셋 구축이 성공적으로 완료되었습니다!")
         logger.info("=" * 60)
         
         # 결과 요약
@@ -239,6 +243,7 @@ def main():
         logger.info(f"  • 훈련 세트: data/splits/full_dataset/train.csv")
         logger.info(f"  • 검증 세트: data/splits/full_dataset/val.csv")
         logger.info(f"  • 테스트 세트: data/splits/full_dataset/test.csv")
+        logger.info(f"  • 분류 라벨: low, high")
         
         return True
         

@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 from sklearn.model_selection import cross_validate
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, f1_score, precision_score, recall_score
 
 from ..models.traditional_ml import (
     BaseWatermelonModel, ModelFactory, load_config
@@ -39,7 +39,7 @@ class TrainingResults:
     def __init__(self):
         self.results = {}
         self.best_model = None
-        self.best_metric = float('inf')
+        self.best_metric = 0.0  # F1-score는 높을수록 좋음
         self.training_start_time: Optional[datetime] = None
         self.training_end_time: Optional[datetime] = None
     
@@ -47,9 +47,9 @@ class TrainingResults:
         """모델 결과 추가"""
         self.results[model_name] = result
         
-        # 최고 성능 모델 업데이트 (MAE 기준)
-        if 'val_mae' in result and result['val_mae'] < self.best_metric:
-            self.best_metric = result['val_mae']
+        # 최고 성능 모델 업데이트 (F1-score 기준, 분류 문제)
+        if 'val_f1_score' in result and result['val_f1_score'] > self.best_metric:
+            self.best_metric = result['val_f1_score']
             self.best_model = model_name
     
     def get_summary(self) -> pd.DataFrame:
@@ -222,14 +222,20 @@ class MLTrainer:
         val_metrics = model.evaluate(data['X_val'], data['y_val'])
         test_metrics = model.evaluate(data['X_test'], data['y_test'])
         
-        # 결과 정리
+        # 결과 정리 (분류 메트릭)
         result = {
-            'train_mae': train_metrics['mae'],
-            'train_r2': train_metrics['r2'],
-            'val_mae': val_metrics['mae'],
-            'val_r2': val_metrics['r2'],
-            'test_mae': test_metrics['mae'],
-            'test_r2': test_metrics['r2'],
+            'train_accuracy': train_metrics['accuracy'],
+            'train_f1_score': train_metrics['f1_score'],
+            'train_precision': train_metrics['precision'],
+            'train_recall': train_metrics['recall'],
+            'val_accuracy': val_metrics['accuracy'],
+            'val_f1_score': val_metrics['f1_score'],
+            'val_precision': val_metrics['precision'],
+            'val_recall': val_metrics['recall'],
+            'test_accuracy': test_metrics['accuracy'],
+            'test_f1_score': test_metrics['f1_score'],
+            'test_precision': test_metrics['precision'],
+            'test_recall': test_metrics['recall'],
             'training_time': training_time,
             'feature_names': feature_names
         }
@@ -245,10 +251,10 @@ class MLTrainer:
             )
             
             result.update({
-                'cv_mae_mean': cv_results['test_mae_mean'],
-                'cv_mae_std': cv_results['test_mae_std'],
-                'cv_r2_mean': cv_results['test_r2_mean'],
-                'cv_r2_std': cv_results['test_r2_std']
+                'cv_accuracy_mean': cv_results['test_accuracy_mean'],
+                'cv_accuracy_std': cv_results['test_accuracy_std'],
+                'cv_f1_score_mean': cv_results['test_f1_mean'],
+                'cv_f1_score_std': cv_results['test_f1_std']
             })
         
         # 특징 중요도
@@ -263,7 +269,7 @@ class MLTrainer:
             }
         
         logger.info(f"{model_name} training completed in {training_time:.2f}s. "
-                   f"Val MAE: {val_metrics['mae']:.3f}, Test MAE: {test_metrics['mae']:.3f}")
+                   f"Val F1: {val_metrics['f1_score']:.3f}, Test F1: {test_metrics['f1_score']:.3f}")
         
         return result
     
@@ -306,7 +312,7 @@ class MLTrainer:
         total_time = (self.results.training_end_time - self.results.training_start_time).total_seconds()
         
         logger.info(f"All models training completed in {total_time:.2f}s")
-        logger.info(f"Best model: {self.results.best_model} (MAE: {self.results.best_metric:.3f})")
+        logger.info(f"Best model: {self.results.best_model} (F1: {self.results.best_metric:.3f})")
         
         return self.results
     

@@ -17,7 +17,9 @@ from scipy import stats
 from sklearn.metrics import (
     mean_absolute_error, mean_squared_error, r2_score,
     mean_absolute_percentage_error, median_absolute_error,
-    max_error, explained_variance_score
+    max_error, explained_variance_score,
+    accuracy_score, f1_score, precision_score, recall_score,
+    classification_report, confusion_matrix
 )
 import logging
 
@@ -88,11 +90,62 @@ class ModelEvaluator:
             residuals = y_true - y_pred
             metrics.update(self._analyze_residuals(residuals))
             
-            logger.info(f"Calculated {len(metrics)} metrics for {model_name}")
+            logger.info(f"Calculated {len(metrics)} regression metrics for {model_name}")
             return metrics
             
         except Exception as e:
-            logger.error(f"Error calculating metrics for {model_name}: {e}")
+            logger.error(f"Error calculating regression metrics for {model_name}: {e}")
+            return {}
+    
+    def calculate_classification_metrics(self, y_true: np.ndarray, y_pred: np.ndarray, 
+                                       model_name: str = "model") -> Dict[str, float]:
+        """
+        분류 메트릭 계산
+        
+        Args:
+            y_true: 실제 라벨
+            y_pred: 예측 라벨
+            model_name: 모델 이름
+            
+        Returns:
+            분류 메트릭 딕셔너리
+        """
+        try:
+            metrics = {
+                # 기본 분류 메트릭
+                'accuracy': float(accuracy_score(y_true, y_pred)),
+                'f1_score': float(f1_score(y_true, y_pred, average='weighted')),
+                'precision': float(precision_score(y_true, y_pred, average='weighted')),
+                'recall': float(recall_score(y_true, y_pred, average='weighted')),
+                
+                # 클래스별 메트릭 (이진 분류)
+                'f1_score_binary': float(f1_score(y_true, y_pred, average='binary')),
+                'precision_binary': float(precision_score(y_true, y_pred, average='binary')),
+                'recall_binary': float(recall_score(y_true, y_pred, average='binary')),
+                
+                # 추가 메트릭
+                'balanced_accuracy': float(accuracy_score(y_true, y_pred)),
+                'support': len(y_true)
+            }
+            
+            # 혼동 행렬 정보
+            cm = confusion_matrix(y_true, y_pred)
+            if cm.shape == (2, 2):  # 이진 분류
+                tn, fp, fn, tp = cm.ravel()
+                metrics.update({
+                    'true_negatives': int(tn),
+                    'false_positives': int(fp),
+                    'false_negatives': int(fn),
+                    'true_positives': int(tp),
+                    'specificity': float(tn / (tn + fp)) if (tn + fp) > 0 else 0.0,
+                    'sensitivity': float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
+                })
+            
+            logger.info(f"Calculated {len(metrics)} classification metrics for {model_name}")
+            return metrics
+            
+        except Exception as e:
+            logger.error(f"Error calculating classification metrics for {model_name}: {e}")
             return {}
     
     def _accuracy_within_threshold(self, y_true: np.ndarray, y_pred: np.ndarray, 
@@ -125,27 +178,97 @@ class ModelEvaluator:
         
         return residuals_analysis
     
+    def _determine_classification_grade(self, metrics: Dict[str, float]) -> str:
+        """분류 성능 등급 결정"""
+        accuracy = metrics.get('accuracy', 0)
+        f1_score = metrics.get('f1_score', 0)
+        precision = metrics.get('precision', 0)
+        recall = metrics.get('recall', 0)
+        
+        # 등급 기준
+        if accuracy > 0.95 and f1_score > 0.95:
+            return "EXCELLENT"
+        elif accuracy > 0.90 and f1_score > 0.90:
+            return "VERY_GOOD"
+        elif accuracy > 0.85 and f1_score > 0.85:
+            return "GOOD"
+        elif accuracy > 0.80 and f1_score > 0.80:
+            return "FAIR"
+        else:
+            return "POOR"
+    
+    def _analyze_classification_strengths_weaknesses(self, metrics: Dict[str, float]) -> Tuple[List[str], List[str]]:
+        """분류 강점/약점 분석"""
+        strengths = []
+        weaknesses = []
+        
+        # 정확도 분석
+        accuracy = metrics.get('accuracy', 0)
+        if accuracy > 0.95:
+            strengths.append("Excellent accuracy (>95%)")
+        elif accuracy > 0.90:
+            strengths.append("High accuracy (>90%)")
+        elif accuracy < 0.80:
+            weaknesses.append("Low accuracy (<80%)")
+        
+        # F1-score 분석
+        f1_score = metrics.get('f1_score', 0)
+        if f1_score > 0.95:
+            strengths.append("Excellent F1-score (>95%)")
+        elif f1_score > 0.90:
+            strengths.append("High F1-score (>90%)")
+        elif f1_score < 0.80:
+            weaknesses.append("Low F1-score (<80%)")
+        
+        # 정밀도/재현율 분석
+        precision = metrics.get('precision', 0)
+        recall = metrics.get('recall', 0)
+        
+        if precision > 0.90:
+            strengths.append("High precision (>90%)")
+        elif precision < 0.80:
+            weaknesses.append("Low precision (<80%)")
+            
+        if recall > 0.90:
+            strengths.append("High recall (>90%)")
+        elif recall < 0.80:
+            weaknesses.append("Low recall (<80%)")
+        
+        # 클래스 불균형 확인
+        if 'true_positives' in metrics and 'false_negatives' in metrics:
+            tp = metrics['true_positives']
+            fn = metrics['false_negatives']
+            if tp + fn > 0:
+                sensitivity = tp / (tp + fn)
+                if sensitivity < 0.80:
+                    weaknesses.append("Low sensitivity for positive class")
+        
+        return strengths, weaknesses
+    
     def evaluate_model_performance(self, y_true: np.ndarray, y_pred: np.ndarray, 
-                                 model_name: str, dataset_name: str = "test") -> Dict[str, Any]:
+                                 model_name: str, dataset_name: str = "test", 
+                                 problem_type: str = "classification") -> Dict[str, Any]:
         """
         단일 모델 성능 평가
         
         Args:
-            y_true: 실제 값
-            y_pred: 예측 값
+            y_true: 실제 값/라벨
+            y_pred: 예측 값/라벨
             model_name: 모델 이름
             dataset_name: 데이터셋 이름
+            problem_type: 문제 타입 ("classification" 또는 "regression")
             
         Returns:
             평가 결과 딕셔너리
         """
-        metrics = self.calculate_regression_metrics(y_true, y_pred, model_name)
-        
-        # 성능 등급 결정
-        performance_grade = self._determine_performance_grade(metrics)
-        
-        # 강점/약점 분석
-        strengths, weaknesses = self._analyze_strengths_weaknesses(metrics)
+        if problem_type == "classification":
+            metrics = self.calculate_classification_metrics(y_true, y_pred, model_name)
+            performance_grade = self._determine_classification_grade(metrics)
+            strengths, weaknesses = self._analyze_classification_strengths_weaknesses(metrics)
+        else:
+            metrics = self.calculate_regression_metrics(y_true, y_pred, model_name)
+            performance_grade = self._determine_performance_grade(metrics)
+            strengths, weaknesses = self._analyze_strengths_weaknesses(metrics)
         
         result = {
             'model_name': model_name,

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-간단한 하이퍼파라미터 튜닝 스크립트
+간단한 하이퍼파라미터 튜닝 스크립트 (분류용)
 
-scikit-learn 모델을 직접 사용하여 하이퍼파라미터 튜닝을 수행합니다.
-복잡한 래퍼 클래스 없이 직접적이고 안정적인 접근 방식을 사용합니다.
+수박 음 높낮이 분류 모델의 하이퍼파라미터 튜닝을 수행합니다.
+scikit-learn 모델을 직접 사용하여 직접적이고 안정적인 접근 방식을 사용합니다.
 
 사용법:
-    python scripts/simple_hyperparameter_tuning.py
+    python scripts/4_simple_hyperparameter_tuning.py
 
 작성자: ML Team
 생성일: 2025-01-15
@@ -24,11 +24,11 @@ from datetime import datetime
 from pathlib import Path
 import gc
 
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
-from sklearn.svm import SVR
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import RandomizedSearchCV, cross_val_score
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 # 경고 무시
 warnings.filterwarnings('ignore')
@@ -65,13 +65,19 @@ def load_data():
     logger.info(f"검증 데이터: {val_df.shape}")
     logger.info(f"테스트 데이터: {test_df.shape}")
     
+    # 라벨 인코딩: 'low' -> 0, 'high' -> 1
+    label_mapping = {'low': 0, 'high': 1}
+    train_df['pitch_label'] = train_df['pitch_label'].map(label_mapping)
+    val_df['pitch_label'] = val_df['pitch_label'].map(label_mapping)
+    test_df['pitch_label'] = test_df['pitch_label'].map(label_mapping)
+    
     # 특징과 타겟 분리
-    X_train = train_df.drop('sweetness', axis=1).values
-    y_train = train_df['sweetness'].values
-    X_val = val_df.drop('sweetness', axis=1).values
-    y_val = val_df['sweetness'].values
-    X_test = test_df.drop('sweetness', axis=1).values
-    y_test = test_df['sweetness'].values
+    X_train = train_df.drop('pitch_label', axis=1).values
+    y_train = train_df['pitch_label'].values
+    X_val = val_df.drop('pitch_label', axis=1).values
+    y_val = val_df['pitch_label'].values
+    X_test = test_df.drop('pitch_label', axis=1).values
+    y_test = test_df['pitch_label'].values
     
     # 특징 스케일링
     scaler = StandardScaler()
@@ -81,7 +87,7 @@ def load_data():
     
     logger.info("데이터 스케일링 완료")
     logger.info(f"특징 수: {X_train_scaled.shape[1]}")
-    logger.info(f"당도 범위: {float(np.array(y_train).min()):.2f} ~ {float(np.array(y_train).max()):.2f} Brix")
+    logger.info(f"음 높낮이 분포: {dict(pd.Series(y_train).value_counts())} (0: 낮음, 1: 높음)")
     
     return {
         'X_train': X_train_scaled,
@@ -95,7 +101,7 @@ def load_data():
 
 
 def get_param_grids():
-    """하이퍼파라미터 그리드 정의"""
+    """하이퍼파라미터 그리드 정의 (분류용)"""
     return {
         'gradient_boosting': {
             'n_estimators': [50, 100, 200, 300],
@@ -110,8 +116,8 @@ def get_param_grids():
             'C': [0.1, 1, 10, 100],
             'gamma': ['scale', 'auto', 0.001, 0.01, 0.1],
             'kernel': ['rbf', 'poly'],
-            'epsilon': [0.01, 0.1, 0.2],
-            'degree': [2, 3, 4]  # poly kernel용
+            'degree': [2, 3, 4],  # poly kernel용
+            'probability': [True]
         },
         'random_forest': {
             'n_estimators': [50, 100, 200, 300],
@@ -129,12 +135,12 @@ def tune_model(model, param_grid, X_train, y_train, model_name, n_iter=20):
     """단일 모델 하이퍼파라미터 튜닝"""
     logger.info(f"=== {model_name} 하이퍼파라미터 튜닝 시작 ===")
     
-    # RandomizedSearchCV 설정
+    # RandomizedSearchCV 설정 (분류용)
     search = RandomizedSearchCV(
         estimator=model,
         param_distributions=param_grid,
         n_iter=n_iter,
-        scoring='neg_mean_absolute_error',
+        scoring='accuracy',  # 분류 정확도
         cv=5,
         n_jobs=-1,
         verbose=1,
@@ -164,39 +170,39 @@ def tune_model(model, param_grid, X_train, y_train, model_name, n_iter=20):
 
 
 def evaluate_model(model, X_test, y_test, X_val, y_val, model_name):
-    """모델 성능 평가"""
+    """모델 성능 평가 (분류용)"""
     # 예측
     y_pred_test = model.predict(X_test)
     y_pred_val = model.predict(X_val)
     
     # 테스트 세트 평가
-    test_mae = mean_absolute_error(y_test, y_pred_test)
-    test_mse = mean_squared_error(y_test, y_pred_test)
-    test_rmse = np.sqrt(test_mse)
-    test_r2 = r2_score(y_test, y_pred_test)
+    test_accuracy = accuracy_score(y_test, y_pred_test)
+    test_f1 = f1_score(y_test, y_pred_test, average='weighted')
+    test_precision = precision_score(y_test, y_pred_test, average='weighted')
+    test_recall = recall_score(y_test, y_pred_test, average='weighted')
     
     # 검증 세트 평가
-    val_mae = mean_absolute_error(y_val, y_pred_val)
-    val_mse = mean_squared_error(y_val, y_pred_val)
-    val_rmse = np.sqrt(val_mse)
-    val_r2 = r2_score(y_val, y_pred_val)
+    val_accuracy = accuracy_score(y_val, y_pred_val)
+    val_f1 = f1_score(y_val, y_pred_val, average='weighted')
+    val_precision = precision_score(y_val, y_pred_val, average='weighted')
+    val_recall = recall_score(y_val, y_pred_val, average='weighted')
     
     logger.info(f"{model_name} 성능 평가:")
-    logger.info(f"  테스트 - MAE: {test_mae:.4f}, RMSE: {test_rmse:.4f}, R²: {test_r2:.4f}")
-    logger.info(f"  검증   - MAE: {val_mae:.4f}, RMSE: {val_rmse:.4f}, R²: {val_r2:.4f}")
+    logger.info(f"  테스트 - 정확도: {test_accuracy:.4f}, F1: {test_f1:.4f}, 정밀도: {test_precision:.4f}, 재현율: {test_recall:.4f}")
+    logger.info(f"  검증   - 정확도: {val_accuracy:.4f}, F1: {val_f1:.4f}, 정밀도: {val_precision:.4f}, 재현율: {val_recall:.4f}")
     
     return {
         'test': {
-            'mae': test_mae,
-            'mse': test_mse,
-            'rmse': test_rmse,
-            'r2': test_r2
+            'accuracy': test_accuracy,
+            'f1_score': test_f1,
+            'precision': test_precision,
+            'recall': test_recall
         },
         'validation': {
-            'mae': val_mae,
-            'mse': val_mse,
-            'rmse': val_rmse,
-            'r2': val_r2
+            'accuracy': val_accuracy,
+            'f1_score': val_f1,
+            'precision': val_precision,
+            'recall': val_recall
         }
     }
 
@@ -271,29 +277,29 @@ def compare_with_baseline(tuned_results, baseline_results):
             baseline_model = model_mapping[model_name]
             
             # 튜닝된 모델 성능
-            tuned_mae = evaluation['test']['mae']
-            tuned_r2 = evaluation['test']['r2']
+            tuned_accuracy = evaluation['test']['accuracy']
+            tuned_f1 = evaluation['test']['f1_score']
             
             # 기본 모델 성능
-            baseline_mae = baseline_results[baseline_model]['test']['mae']
-            baseline_r2 = baseline_results[baseline_model]['test']['r2']
+            baseline_accuracy = baseline_results[baseline_model]['test']['accuracy']
+            baseline_f1 = baseline_results[baseline_model]['test']['f1_score']
             
             # 개선 정도 계산
-            mae_improvement = ((baseline_mae - tuned_mae) / baseline_mae) * 100
-            r2_improvement = ((tuned_r2 - baseline_r2) / baseline_r2) * 100 if baseline_r2 > 0 else 0
+            accuracy_improvement = ((tuned_accuracy - baseline_accuracy) / baseline_accuracy) * 100 if baseline_accuracy > 0 else 0
+            f1_improvement = ((tuned_f1 - baseline_f1) / baseline_f1) * 100 if baseline_f1 > 0 else 0
             
             improvements[model_name] = {
-                'mae_improvement': mae_improvement,
-                'r2_improvement': r2_improvement,
-                'baseline_mae': baseline_mae,
-                'tuned_mae': tuned_mae,
-                'baseline_r2': baseline_r2,
-                'tuned_r2': tuned_r2
+                'accuracy_improvement': accuracy_improvement,
+                'f1_improvement': f1_improvement,
+                'baseline_accuracy': baseline_accuracy,
+                'tuned_accuracy': tuned_accuracy,
+                'baseline_f1': baseline_f1,
+                'tuned_f1': tuned_f1
             }
             
             logger.info(f"  {model_name} vs {baseline_model}:")
-            logger.info(f"    MAE: {baseline_mae:.4f} → {tuned_mae:.4f} ({mae_improvement:+.2f}%)")
-            logger.info(f"    R²:  {baseline_r2:.4f} → {tuned_r2:.4f} ({r2_improvement:+.2f}%)")
+            logger.info(f"    정확도: {baseline_accuracy:.4f} → {tuned_accuracy:.4f} ({accuracy_improvement:+.2f}%)")
+            logger.info(f"    F1:    {baseline_f1:.4f} → {tuned_f1:.4f} ({f1_improvement:+.2f}%)")
     
     return improvements
 
@@ -345,29 +351,30 @@ def save_results(tuning_results, evaluation_results, improvements, data):
 
 def generate_report(tuning_results, evaluation_results, improvements, results_dir):
     """요약 보고서 생성"""
-    # 최고 성능 모델 찾기
-    best_model_name = min(evaluation_results.keys(), 
-                         key=lambda x: evaluation_results[x]['test']['mae'])
+    # 최고 성능 모델 찾기 (F1-score 기준)
+    best_model_name = max(evaluation_results.keys(), 
+                         key=lambda x: evaluation_results[x]['test']['f1_score'])
     best_metrics = evaluation_results[best_model_name]['test']
     
     # 보고서 작성
-    report = f"""# 하이퍼파라미터 튜닝 결과 보고서
+    report = f"""# 하이퍼파라미터 튜닝 결과 보고서 (분류)
 
 생성일: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 ## 실험 개요
 
-- **목적**: 수박 당도 예측 모델의 하이퍼파라미터 최적화
-- **데이터**: 51개 특징, 146개 샘플 (Train: 102, Val: 22, Test: 22)
+- **목적**: 수박 음 높낮이 분류 모델의 하이퍼파라미터 최적화
+- **데이터**: 51개 특징, 121개 샘플 (Train: 84, Val: 18, Test: 19)
 - **방법**: RandomizedSearchCV (20회 반복)
-- **평가 지표**: MAE (Mean Absolute Error), R² (R-squared)
+- **평가 지표**: 정확도 (Accuracy), F1-score
 
 ## 최고 성능 모델
 
 **모델**: {best_model_name}
-- **테스트 MAE**: {best_metrics['mae']:.4f} Brix
-- **테스트 R²**: {best_metrics['r2']:.4f}
-- **테스트 RMSE**: {best_metrics['rmse']:.4f} Brix
+- **테스트 정확도**: {best_metrics['accuracy']:.4f}
+- **테스트 F1-score**: {best_metrics['f1_score']:.4f}
+- **테스트 정밀도**: {best_metrics['precision']:.4f}
+- **테스트 재현율**: {best_metrics['recall']:.4f}
 
 ## 모든 모델 성능
 
@@ -379,9 +386,10 @@ def generate_report(tuning_results, evaluation_results, improvements, results_di
         tuning_time = tuning_results[model_name]['tuning_time']
         report += f"""
 ### {model_name}
-- **테스트 MAE**: {test_metrics['mae']:.4f} Brix
-- **테스트 R²**: {test_metrics['r2']:.4f}
-- **테스트 RMSE**: {test_metrics['rmse']:.4f} Brix
+- **테스트 정확도**: {test_metrics['accuracy']:.4f}
+- **테스트 F1-score**: {test_metrics['f1_score']:.4f}
+- **테스트 정밀도**: {test_metrics['precision']:.4f}
+- **테스트 재현율**: {test_metrics['recall']:.4f}
 - **튜닝 시간**: {tuning_time:.2f}초
 - **최적 파라미터**: {tuning_results[model_name]['best_params']}
 """
@@ -392,24 +400,24 @@ def generate_report(tuning_results, evaluation_results, improvements, results_di
         for model_name, imp in improvements.items():
             report += f"""
 ### {model_name}
-- **MAE 개선**: {imp['mae_improvement']:+.2f}%
-- **R² 개선**: {imp['r2_improvement']:+.2f}%
+- **정확도 개선**: {imp['accuracy_improvement']:+.2f}%
+- **F1-score 개선**: {imp['f1_improvement']:+.2f}%
 """
     
     # 성능 목표 달성 여부
     report += f"""
 ## 성능 목표 달성 여부
 
-- **MAE < 1.0 Brix**: {'✅ 달성' if best_metrics['mae'] < 1.0 else '❌ 미달성'} ({best_metrics['mae']:.4f})
-- **R² > 0.8**: {'✅ 달성' if best_metrics['r2'] > 0.8 else '❌ 미달성'} ({best_metrics['r2']:.4f})
+- **정확도 > 90%**: {'✅ 달성' if best_metrics['accuracy'] > 0.90 else '❌ 미달성'} ({best_metrics['accuracy']:.4f})
+- **F1-score > 0.85**: {'✅ 달성' if best_metrics['f1_score'] > 0.85 else '❌ 미달성'} ({best_metrics['f1_score']:.4f})
 
 ## 결론
 
-최고 성능 모델인 **{best_model_name}**이 MAE {best_metrics['mae']:.4f} Brix, R² {best_metrics['r2']:.4f}의 
-{'우수한' if best_metrics['mae'] < 1.0 and best_metrics['r2'] > 0.8 else '양호한'} 성능을 보였습니다.
+최고 성능 모델인 **{best_model_name}**이 정확도 {best_metrics['accuracy']:.4f}, F1-score {best_metrics['f1_score']:.4f}의 
+{'우수한' if best_metrics['accuracy'] > 0.90 and best_metrics['f1_score'] > 0.85 else '양호한'} 성능을 보였습니다.
 
 하이퍼파라미터 튜닝을 통해 모델 성능이 개선되었으며, 
-{'목표 성능을 달성' if best_metrics['mae'] < 1.0 and best_metrics['r2'] > 0.8 else '목표에 근접한 성능을 확보'}했습니다.
+{'목표 성능을 달성' if best_metrics['accuracy'] > 0.90 and best_metrics['f1_score'] > 0.85 else '목표에 근접한 성능을 확보'}했습니다.
 """
     
     # 보고서 저장
@@ -424,9 +432,9 @@ def generate_report(tuning_results, evaluation_results, improvements, results_di
     print("🎯 하이퍼파라미터 튜닝 완료!")
     print("="*60)
     print(f"최고 성능 모델: {best_model_name}")
-    print(f"테스트 MAE: {best_metrics['mae']:.4f} Brix")
-    print(f"테스트 R²: {best_metrics['r2']:.4f}")
-    print(f"목표 달성: {'✅' if best_metrics['mae'] < 1.0 and best_metrics['r2'] > 0.8 else '⚠️'}")
+    print(f"테스트 정확도: {best_metrics['accuracy']:.4f}")
+    print(f"테스트 F1-score: {best_metrics['f1_score']:.4f}")
+    print(f"목표 달성: {'✅' if best_metrics['accuracy'] > 0.90 and best_metrics['f1_score'] > 0.85 else '⚠️'}")
     print(f"결과 저장: {results_dir}")
     print("="*60)
 
@@ -445,11 +453,11 @@ def main():
         # 2. 기본 모델 결과 로드
         baseline_results = load_baseline_results()
         
-        # 3. 모델 및 파라미터 그리드 정의
+        # 3. 모델 및 파라미터 그리드 정의 (분류용)
         models = {
-            'gradient_boosting': GradientBoostingRegressor(),
-            'svm': SVR(),
-            'random_forest': RandomForestRegressor()
+            'gradient_boosting': GradientBoostingClassifier(),
+            'svm': SVC(),
+            'random_forest': RandomForestClassifier()
         }
         param_grids = get_param_grids()
         

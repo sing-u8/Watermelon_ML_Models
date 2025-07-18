@@ -72,7 +72,7 @@ class DatasetBuilder:
             logger.info(f"컬럼: {list(metadata_df.columns)}")
             
             # 필수 컬럼 확인
-            required_columns = ['file_path', 'sweetness']
+            required_columns = ['file_path', 'pitch_label']
             missing_columns = [col for col in required_columns if col not in metadata_df.columns]
             
             if missing_columns:
@@ -85,20 +85,20 @@ class DatasetBuilder:
             raise
     
     def process_single_file(self, file_path: Union[str, Path], 
-                           sweetness: float) -> Tuple[Optional[np.ndarray], Dict]:
+                           pitch_label: str) -> Tuple[Optional[np.ndarray], Dict]:
         """
         단일 오디오 파일 처리 (로딩 -> 전처리 -> 특징 추출)
         
         Args:
             file_path (Union[str, Path]): 오디오 파일 경로
-            sweetness (float): 당도값
+            pitch_label (str): 음 높낮이 라벨
             
         Returns:
             Tuple[Optional[np.ndarray], Dict]: (특징 벡터, 처리 정보)
         """
         processing_info = {
             'file_path': str(file_path),
-            'sweetness': sweetness,
+            'pitch_label': pitch_label,
             'success': False,
             'error': None,
             'processing_time': 0.0,
@@ -193,14 +193,14 @@ class DatasetBuilder:
             # 배치 내 각 파일 처리
             for _, row in batch_df.iterrows():
                 file_path = row['file_path']
-                sweetness = row['sweetness']
+                pitch_label = row['pitch_label']
                 
-                features, processing_info = self.process_single_file(file_path, sweetness)
+                features, processing_info = self.process_single_file(file_path, pitch_label)
                 processing_results.append(processing_info)
                 
                 if features is not None:
                     batch_features.append(features)
-                    batch_labels.append(sweetness)
+                    batch_labels.append(pitch_label)
                     self.stats['processed_files'] += 1
                 else:
                     self.stats['failed_files'] += 1
@@ -231,7 +231,7 @@ class DatasetBuilder:
             
             # DataFrame 생성
             feature_df = pd.DataFrame(feature_array, columns=feature_names)
-            feature_df['sweetness'] = label_array
+            feature_df['pitch_label'] = label_array
             
             # CSV 파일 저장
             features_csv_path = output_dir / "features.csv"
