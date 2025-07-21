@@ -1,23 +1,22 @@
 data_info:
-  feature_count: 11
+  feature_count: 10
   feature_selection_method: progressive_selection
   scaling_method: StandardScaler
   selected_features:
-  - harmonic_ratio
-  - rmse_energy
-  - mel_spec_q75
-  - mel_spec_energy
-  - mel_spec_skewness
-  - fundamental_frequency
+  - energy_entropy
+  - spectral_bandwidth
+  - mfcc_11
   - tempo
-  - roughness
-  - mel_spec_crest_factor
-  - peak_energy
-  - mfcc_3
+  - mfcc_12
+  - mfcc_10
+  - harmonic_ratio
+  - mel_spec_kurtosis
+  - mfcc_6
+  - spectral_contrast
   target_variable: sweetness_brix
 deployment_info:
   input_shape:
-  - 11
+  - 10
   mobile_ready: true
   output_shape:
   - 1
@@ -27,11 +26,11 @@ deployment_info:
   - pkl
   - joblib
 goals_achieved:
-  mae_achieved: 0.40353846153846157
+  mae_achieved: 0.4783846153846174
   mae_goal: 1.0
-  mae_improvement_factor: 2.478078536027449
-  r2_achieved: 0.6555739673390979
-  r2_excess: -0.14442603266090215
+  mae_improvement_factor: 2.09036822640295
+  r2_achieved: 0.5445445725264155
+  r2_excess: -0.2554554274735845
   r2_goal: 0.8
 model_config:
   max_depth: 15
@@ -43,14 +42,14 @@ model_config:
 model_info:
   algorithm: Progressive Feature Selection + Random Forest
   author: Watermelon ML Project Team
-  creation_date: '2025-07-14T17:34:07.451281'
+  creation_date: '2025-07-21T10:55:08.582978'
   name: WatermelonSweetnessPredictionModel
   type: RandomForest
   version: 1.0.0
 performance:
-  test_mae: 0.40353846153846157
-  test_mape: 3.9458563518701277
-  test_max_error: 1.2659999999999965
-  test_r2: 0.6555739673390979
-  test_rmse: 0.5251721329533476
+  test_mae: 0.4783846153846174
+  test_mape: 4.771792018972279
+  test_max_error: 1.3340000000000085
+  test_r2: 0.5445445725264155
+  test_rmse: 0.6039161301933352
   test_samples: 26

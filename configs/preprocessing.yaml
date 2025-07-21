@@ -37,6 +37,53 @@ audio:
     hop_length: 512               # 홉 길이
     win_length: null              # 윈도우 길이 (null=n_fft)
     window: "hann"                # 윈도우 함수
+
+# 데이터 증강 설정
+augmentation:
+  # 전역 증강 설정
+  enabled: true                   # 기본값: 비활성화
+  strategy: "multiply"             # "multiply" 또는 "replace"
+  total_multiplier: 5              # 전체 배수 (원본 + 증강 = 5배)
+  max_augmented_samples: 10        # 최대 증강 샘플 수 (안전장치)
+  
+  # 증강 타입별 설정
+  types:
+    pitch_shift:
+      enabled: true               # 기본값: 비활성화
+      count: 2                     # 이 타입으로 2개 생성
+      steps: [-2, -1, 1, 2]        # 반음 단위 시프트
+      probability: 1.0             # 적용 확률
+    
+    time_stretch:
+      enabled: true               # 기본값: 비활성화
+      count: 1                     # 이 타입으로 1개 생성
+      rate_range: [0.8, 1.2]       # 속도 변화 범위
+      probability: 1.0
+    
+    add_noise:
+      enabled: true               # 기본값: 비활성화
+      count: 1                     # 이 타입으로 1개 생성
+      noise_level: [0.001, 0.01]   # 노이즈 레벨 범위
+      probability: 0.8             # 80% 확률로 적용
+    
+    time_shift:
+      enabled: true               # 기본값: 비활성화
+      count: 0
+      shift_range: [-0.1, 0.1]
+      probability: 1.0
+    
+    volume_change:
+      enabled: true               # 기본값: 비활성화
+      count: 0                     # 0개 = 이 타입 사용 안함
+      gain_range: [0.5, 1.5]
+      probability: 1.0
+  
+  # 고급 설정
+  advanced:
+    random_seed: 42                # 재현성을 위한 시드
+    preserve_original: true        # 원본 데이터 보존 여부
+    combine_strategy: "average"    # "average", "concatenate", "select_best"
+    quality_threshold: 0.8         # 품질 임계값 (낮은 품질 증강 제거)
   
 # 특징 추출 설정
 features:

@@ -4,7 +4,7 @@ AudioPreprocessor 클래스: 오디오 신호의 전처리 (묵음 제거, 정�
 """
 
 import logging
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, List
 import numpy as np
 import librosa
 import scipy.signal
@@ -25,6 +25,7 @@ class AudioPreprocessor:
     - 신호 정규화 (normalization)
     - 노이즈 필터링 (filtering)
     - 품질 검증 (quality validation)
+    - 데이터 증강 (data augmentation)
     """
     
     def __init__(self, config_path: Optional[Union[str, Path]] = None):
@@ -35,12 +36,22 @@ class AudioPreprocessor:
             config_path (Optional[Union[str, Path]]): 설정 파일 경로
         """
         self.config = self._load_config(config_path)
+        self.augmentation_config = self.config.get('augmentation', {})
+        self.random_seed = self.augmentation_config.get('advanced', {}).get('random_seed', 42)
+        np.random.seed(self.random_seed)
+        
+        # 증강 상태 추적
+        self.augmentation_enabled = self.augmentation_config.get('enabled', False)
+        self.enabled_augmentation_types = self._get_enabled_augmentation_types()
+        
         self.stats = {
             'processed_files': 0,
             'trim_applied': 0,
             'normalize_applied': 0,
             'filter_applied': 0,
-            'quality_issues': 0
+            'quality_issues': 0,
+            'augmented_samples': 0,
+            'augmentation_types_used': {}
         }
         
         logger.info("AudioPreprocessor 초기화 완료")
@@ -90,9 +101,87 @@ class AudioPreprocessor:
                 'check_silence': True,
                 'silence_threshold': -60,
                 'max_silence_ratio': 0.8
+            },
+            'augmentation': {
+                'enabled': False,
+                'types': {
+                    'pitch_shift': {
+                        'enabled': False,
+                        'count': 0,
+                        'probability': 1.0,
+                        'steps': [-2, -1, 1, 2]
+                    },
+                    'time_stretch': {
+                        'enabled': False,
+                        'count': 0,
+                        'probability': 1.0,
+                        'rate_range': [0.8, 1.2]
+                    },
+                    'add_noise': {
+                        'enabled': False,
+                        'count': 0,
+                        'probability': 1.0,
+                        'noise_level': [0.001, 0.01]
+                    },
+                    'time_shift': {
+                        'enabled': False,
+                        'count': 0,
+                        'probability': 1.0,
+                        'shift_range': [-0.1, 0.1]
+                    },
+                    'volume_change': {
+                        'enabled': False,
+                        'count': 0,
+                        'probability': 1.0,
+                        'gain_range': [0.5, 1.5]
+                    }
+                },
+                'total_multiplier': 5,
+                'max_augmented_samples': 10,
+                'advanced': {
+                    'random_seed': 42,
+                    'preserve_original': True,
+                    'quality_threshold': 0.8
+                }
             }
         }
     
+    def _get_enabled_augmentation_types(self) -> List[str]:
+        """활성화된 증강 타입 목록 반환"""
+        enabled_types = []
+        for aug_type, config in self.augmentation_config.get('types', {}).items():
+            if config.get('enabled', False):
+                enabled_types.append(aug_type)
+        return enabled_types
+    
+    def enable_augmentation(self, enabled: bool = True):
+        """증강 활성화/비활성화"""
+        self.augmentation_enabled = enabled
+        logger.info(f"증강 {'활성화' if enabled else '비활성화'}")
+    
+    def enable_augmentation_type(self, aug_type: str, enabled: bool = True):
+        """특정 증강 타입 활성화/비활성화"""
+        if aug_type in self.augmentation_config.get('types', {}):
+            self.augmentation_config['types'][aug_type]['enabled'] = enabled
+            self.enabled_augmentation_types = self._get_enabled_augmentation_types()
+            logger.info(f"증강 타입 '{aug_type}' {'활성화' if enabled else '비활성화'}")
+        else:
+            logger.warning(f"알 수 없는 증강 타입: {aug_type}")
+    
+    def set_augmentation_multiplier(self, multiplier: int):
+        """증강 배수 설정"""
+        self.augmentation_config['total_multiplier'] = multiplier
+        logger.info(f"증강 배수 설정: {multiplier}")
+    
+    def get_augmentation_status(self) -> dict:
+        """증강 상태 정보 반환"""
+        return {
+            'enabled': self.augmentation_enabled,
+            'total_multiplier': self.augmentation_config.get('total_multiplier', 1),
+            'enabled_types': self.enabled_augmentation_types,
+            'config': self.augmentation_config
+        }
+
     def trim_silence(self, audio_data: np.ndarray, 
                     sample_rate: int,
                     top_db: Optional[int] = None,
@@ -424,12 +513,291 @@ class AudioPreprocessor:
             'trim_applied': 0,
             'normalize_applied': 0,
             'filter_applied': 0,
-            'quality_issues': 0
+            'quality_issues': 0,
+            'augmented_samples': 0,
+            'augmentation_types_used': {}
         }
         logger.info("AudioPreprocessor 통계 정보가 초기화되었습니다.")
     
     def __repr__(self) -> str:
         return f"AudioPreprocessor(processed_files={self.stats['processed_files']})"
+
+    def augment_audio(self, audio_data: np.ndarray, 
+                     sample_rate: int,
+                     target_multiplier: Optional[int] = None,
+                     force_enable: Optional[bool] = None) -> List[Tuple[np.ndarray, dict]]:
+        """
+        오디오 데이터 증강 (배수 조절 가능)
+        
+        Args:
+            audio_data: 원본 오디오 데이터
+            sample_rate: 샘플링 레이트
+            target_multiplier: 목표 배수 (None=설정 파일 사용)
+            force_enable: 강제 활성화/비활성화 (None=설정 파일 사용)
+            
+        Returns:
+            List[Tuple[np.ndarray, dict]]: (증강된 오디오, 증강 정보) 튜플 리스트
+        """
+        # 증강 활성화 여부 결정
+        should_augment = force_enable if force_enable is not None else self.augmentation_enabled
+        
+        if not should_augment:
+            logger.debug("증강 비활성화됨 - 원본만 반환")
+            return [(audio_data, {
+                'augmented': False, 
+                'type': 'original',
+                'multiplier_index': 0,
+                'reason': 'augmentation_disabled'
+            })]
+        
+        # 활성화된 증강 타입이 없으면 원본만 반환
+        if not self.enabled_augmentation_types:
+            logger.warning("활성화된 증강 타입이 없음 - 원본만 반환")
+            return [(audio_data, {
+                'augmented': False, 
+                'type': 'original',
+                'multiplier_index': 0,
+                'reason': 'no_enabled_augmentation_types'
+            })]
+        
+        # 목표 배수 설정
+        if target_multiplier is None:
+            target_multiplier = self.augmentation_config.get('total_multiplier', 5)
+        
+        max_samples = self.augmentation_config.get('max_augmented_samples', 10)
+        target_multiplier = min(target_multiplier, max_samples)
+        
+        preserve_original = self.augmentation_config.get('advanced', {}).get('preserve_original', True)
+        
+        augmented_samples = []
+        
+        # 원본 데이터 추가 (선택사항)
+        if preserve_original:
+            augmented_samples.append((audio_data, {
+                'augmented': False, 
+                'type': 'original',
+                'multiplier_index': 0,
+                'reason': 'preserve_original'
+            }))
+        
+        # 증강 타입별로 샘플 생성
+        current_multiplier = len(augmented_samples)
+        multiplier_index = 1
+        
+        for aug_type in self.enabled_augmentation_types:
+            config = self.augmentation_config['types'][aug_type]
+            
+            count = config.get('count', 0)
+            probability = config.get('probability', 1.0)
+            
+            # 확률에 따라 적용 여부 결정
+            if np.random.random() > probability:
+                continue
+            
+            # 목표 배수에 도달하면 중단
+            if current_multiplier >= target_multiplier:
+                break
+            
+            # 실제 생성할 개수 계산
+            actual_count = min(count, target_multiplier - current_multiplier)
+            
+            for i in range(actual_count):
+                if aug_type == 'pitch_shift':
+                    augmented_audio, aug_info = self._pitch_shift(audio_data, sample_rate, config)
+                elif aug_type == 'time_stretch':
+                    augmented_audio, aug_info = self._time_stretch(audio_data, sample_rate, config)
+                elif aug_type == 'add_noise':
+                    augmented_audio, aug_info = self._add_noise(audio_data, sample_rate, config)
+                elif aug_type == 'time_shift':
+                    augmented_audio, aug_info = self._time_shift(audio_data, sample_rate, config)
+                elif aug_type == 'volume_change':
+                    augmented_audio, aug_info = self._volume_change(audio_data, sample_rate, config)
+                else:
+                    continue
+                
+                # 품질 검사 (선택사항)
+                if self._check_augmentation_quality(augmented_audio, aug_info):
+                    aug_info['multiplier_index'] = multiplier_index
+                    augmented_samples.append((augmented_audio, aug_info))
+                    current_multiplier += 1
+                    multiplier_index += 1
+                    
+                    # 통계 업데이트
+                    self.stats['augmented_samples'] += 1
+                    aug_type_count = self.stats['augmentation_types_used'].get(aug_type, 0)
+                    self.stats['augmentation_types_used'][aug_type] = aug_type_count + 1
+                
+                # 목표 배수에 도달하면 중단
+                if current_multiplier >= target_multiplier:
+                    break
+        
+        # 목표 배수에 미치지 못하면 추가 증강
+        while current_multiplier < target_multiplier:
+            # 활성화된 증강 타입 중에서 랜덤 선택
+            if not self.enabled_augmentation_types:
+                break
+            
+            aug_type = np.random.choice(self.enabled_augmentation_types)
+            config = self.augmentation_config['types'][aug_type]
+            
+            if aug_type == 'pitch_shift':
+                augmented_audio, aug_info = self._pitch_shift(audio_data, sample_rate, config)
+            elif aug_type == 'time_stretch':
+                augmented_audio, aug_info = self._time_stretch(audio_data, sample_rate, config)
+            elif aug_type == 'add_noise':
+                augmented_audio, aug_info = self._add_noise(audio_data, sample_rate, config)
+            elif aug_type == 'time_shift':
+                augmented_audio, aug_info = self._time_shift(audio_data, sample_rate, config)
+            elif aug_type == 'volume_change':
+                augmented_audio, aug_info = self._volume_change(audio_data, sample_rate, config)
+            else:
+                continue
+            
+            if self._check_augmentation_quality(augmented_audio, aug_info):
+                aug_info['multiplier_index'] = multiplier_index
+                augmented_samples.append((augmented_audio, aug_info))
+                current_multiplier += 1
+                multiplier_index += 1
+                
+                # 통계 업데이트
+                self.stats['augmented_samples'] += 1
+                aug_type_count = self.stats['augmentation_types_used'].get(aug_type, 0)
+                self.stats['augmentation_types_used'][aug_type] = aug_type_count + 1
+        
+        logger.info(f"증강 완료: 원본 1개 → 총 {len(augmented_samples)}개 (배수: {len(augmented_samples)})")
+        return augmented_samples
+    
+    def _check_augmentation_quality(self, audio_data: np.ndarray, aug_info: dict) -> bool:
+        """증강 품질 검사"""
+        quality_threshold = self.augmentation_config.get('advanced', {}).get('quality_threshold', 0.8)
+        
+        # 기본 품질 검사
+        if np.any(np.isnan(audio_data)) or np.any(np.isinf(audio_data)):
+            return False
+        
+        # 신호 대비 노이즈 비율 검사 (노이즈 증강의 경우)
+        if aug_info.get('type') == 'add_noise':
+            signal_power = np.mean(audio_data ** 2)
+            if signal_power < 1e-6:  # 너무 작은 신호
+                return False
+        
+        # 클리핑 검사
+        clipping_ratio = np.sum(np.abs(audio_data) > 0.99) / len(audio_data)
+        if clipping_ratio > 0.05:  # 5% 이상 클리핑
+            return False
+        
+        return True
+    
+    def _pitch_shift(self, audio_data: np.ndarray, sample_rate: int, config: dict) -> Tuple[np.ndarray, dict]:
+        """피치 시프트 증강"""
+        steps = config.get('steps', [-2, -1, 1, 2])
+        
+        # 랜덤하게 하나의 스텝 선택
+        step = np.random.choice(steps)
+        
+        try:
+            augmented_audio = librosa.effects.pitch_shift(
+                audio_data, 
+                sr=sample_rate, 
+                n_steps=step
+            )
+            
+            return augmented_audio, {
+                'augmented': True,
+                'type': 'pitch_shift',
+                'step': step,
+                'original_length': len(audio_data),
+                'augmented_length': len(augmented_audio)
+            }
+        except Exception as e:
+            logger.warning(f"피치 시프트 실패: {e}")
+            return audio_data, {
+                'augmented': False,
+                'type': 'pitch_shift_failed',
+                'error': str(e)
+            }
+    
+    def _time_stretch(self, audio_data: np.ndarray, sample_rate: int, config: dict) -> Tuple[np.ndarray, dict]:
+        """타임 스트레치 증강"""
+        rate_range = config.get('rate_range', [0.8, 1.2])
+        
+        rate = np.random.uniform(rate_range[0], rate_range[1])
+        
+        try:
+            augmented_audio = librosa.effects.time_stretch(
+                audio_data, 
+                rate=rate
+            )
+            
+            return augmented_audio, {
+                'augmented': True,
+                'type': 'time_stretch',
+                'rate': rate,
+                'original_length': len(audio_data),
+                'augmented_length': len(augmented_audio)
+            }
+        except Exception as e:
+            logger.warning(f"타임 스트레치 실패: {e}")
+            return audio_data, {
+                'augmented': False,
+                'type': 'time_stretch_failed',
+                'error': str(e)
+            }
+    
+    def _add_noise(self, audio_data: np.ndarray, sample_rate: int, config: dict) -> Tuple[np.ndarray, dict]:
+        """노이즈 추가 증강"""
+        noise_level = config.get('noise_level', [0.001, 0.01])
+        
+        level = np.random.uniform(noise_level[0], noise_level[1])
+        noise = np.random.normal(0, level, audio_data.shape)
+        
+        augmented_audio = audio_data + noise
+        
+        return augmented_audio, {
+            'augmented': True,
+            'type': 'add_noise',
+            'noise_level': level,
+            'original_length': len(audio_data),
+            'augmented_length': len(augmented_audio)
+        }
+    
+    def _time_shift(self, audio_data: np.ndarray, sample_rate: int, config: dict) -> Tuple[np.ndarray, dict]:
+        """타임 시프트 증강"""
+        shift_range = config.get('shift_range', [-0.1, 0.1])
+        
+        shift_seconds = np.random.uniform(shift_range[0], shift_range[1])
+        shift_samples = int(shift_seconds * sample_rate)
+        
+        if shift_samples > 0:
+            augmented_audio = np.pad(audio_data, (shift_samples, 0), mode='constant')
+            augmented_audio = augmented_audio[:-shift_samples]
+        else:
+            augmented_audio = np.pad(audio_data, (0, -shift_samples), mode='constant')
+            augmented_audio = augmented_audio[-shift_samples:]
+        
+        return augmented_audio, {
+            'augmented': True,
+            'type': 'time_shift',
+            'shift_seconds': shift_seconds,
+            'original_length': len(audio_data),
+            'augmented_length': len(augmented_audio)
+        }
+    
+    def _volume_change(self, audio_data: np.ndarray, sample_rate: int, config: dict) -> Tuple[np.ndarray, dict]:
+        """볼륨 변경 증강"""
+        gain_range = config.get('gain_range', [0.5, 1.5])
+        
+        gain = np.random.uniform(gain_range[0], gain_range[1])
+        
+        augmented_audio = audio_data * gain
+        
+        return augmented_audio, {
+            'augmented': True,
+            'type': 'volume_change',
+            'gain': gain,
+            'original_length': len(audio_data),
+            'augmented_length': len(augmented_audio)
+        }
 
 
 # 편의 함수들

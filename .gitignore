@@ -220,3 +220,5 @@ wandb/
 
 # data
 data/raw/*
+data/backup/*
+data/backup

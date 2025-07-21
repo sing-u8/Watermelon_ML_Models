@@ -5,7 +5,7 @@
 - **모델명**: Watermelon Sweetness Prediction Model v1.0.0
 - **알고리즘**: Progressive Feature Selection + Random Forest
 - **성능**: MAE 0.0974 Brix, R² 0.9887
-- **특징 수**: 11개 (원본 51개에서 선택)
+- **특징 수**: 10개 (원본 51개에서 선택)
 
 ## 🚀 빠른 시작
 
@@ -61,19 +61,18 @@ predicted_sweetness = model.predict(scaled_features)[0]
 print(f"예측된 당도: {predicted_sweetness:.2f} Brix")
 ```
 
-## 📊 선택된 핵심 특징 (11개)
+## 📊 선택된 핵심 특징 (10개)
 
- 1. `harmonic_ratio`
- 2. `rmse_energy`
- 3. `mel_spec_q75`
- 4. `mel_spec_energy`
- 5. `mel_spec_skewness`
- 6. `fundamental_frequency`
- 7. `tempo`
- 8. `roughness`
- 9. `mel_spec_crest_factor`
-10. `peak_energy`
-11. `mfcc_3`
+ 1. `energy_entropy`
+ 2. `spectral_bandwidth`
+ 3. `mfcc_11`
+ 4. `tempo`
+ 5. `mfcc_12`
+ 6. `mfcc_10`
+ 7. `harmonic_ratio`
+ 8. `mel_spec_kurtosis`
+ 9. `mfcc_6`
+10. `spectral_contrast`
 
 
 ## 🔧 API 사용법
@@ -245,7 +244,7 @@ def predict_with_cleanup(audio_file_path):
 
 - **프로젝트**: Watermelon ML Project
 - **버전**: 1.0.0
-- **업데이트**: 2025-07-12
+- **업데이트**: 2025-07-21
 - **라이센스**: MIT
 
 ---

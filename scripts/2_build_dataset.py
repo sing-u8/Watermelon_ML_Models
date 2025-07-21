@@ -2,6 +2,7 @@
 """
 🍉 수박 당도 예측 ML 프로젝트 - 데이터셋 구축 스크립트
 전체 수박 오디오 데이터에서 특징을 추출하고 데이터셋을 구축합니다.
+데이터 증강 기능 포함.
 """
 
 import sys
@@ -9,8 +10,10 @@ import os
 import logging
 import pandas as pd
 import numpy as np
+import argparse
 from pathlib import Path
 import time
+from typing import Optional
 
 # 프로젝트 루트 디렉토리를 Python path에 추가
 project_root = Path(__file__).parent.parent
@@ -25,6 +28,25 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def parse_arguments():
+    """명령줄 인자 파싱"""
+    parser = argparse.ArgumentParser(description='수박 당도 예측 데이터셋 구축')
+    
+    parser.add_argument('--augmentation', action='store_true', 
+                       help='데이터 증강 활성화')
+    parser.add_argument('--multiplier', type=int, default=5,
+                       help='증강 배수 (기본값: 5)')
+    parser.add_argument('--aug-types', nargs='+', 
+                       choices=['pitch_shift', 'time_stretch', 'add_noise', 'time_shift', 'volume_change'],
+                       help='사용할 증강 타입들')
+    parser.add_argument('--output-dir', type=str, default=None,
+                       help='출력 디렉토리 (기본값: data/processed/full_dataset)')
+    parser.add_argument('--batch-size', type=int, default=10,
+                       help='배치 크기 (기본값: 10)')
+    
+    return parser.parse_args()
 
 
 def analyze_metadata():
@@ -55,8 +77,64 @@ def analyze_metadata():
     return df
 
 
+def build_dataset_with_options(enable_augmentation: bool = False, 
+                              multiplier: int = 5,
+                              aug_types: Optional[list] = None,
+                              output_dir: Optional[str] = None,
+                              batch_size: int = 10):
+    """옵션을 지정하여 데이터셋 구축"""
+    logger.info(f"=== 데이터셋 구축 (증강: {enable_augmentation}, 배수: {multiplier}) ===")
+    
+    # 출력 디렉토리 설정
+    if output_dir is None:
+        if enable_augmentation:
+            output_dir = project_root / 'data' / 'processed' / f'augmented_dataset_{multiplier}x'
+        else:
+            output_dir = project_root / 'data' / 'processed' / 'full_dataset'
+    else:
+        output_dir = Path(output_dir)
+    
+    builder = DatasetBuilder(config_path=project_root / 'configs' / 'preprocessing.yaml')
+    
+    # 증강 설정
+    if enable_augmentation:
+        builder.enable_augmentation(True)
+        builder.set_augmentation_multiplier(multiplier)
+        
+        # 특정 증강 타입만 활성화
+        if aug_types:
+            # 모든 증강 타입 비활성화
+            all_types = ['pitch_shift', 'time_stretch', 'add_noise', 'time_shift', 'volume_change']
+            for aug_type in all_types:
+                builder.enable_augmentation_type(aug_type, False)
+            
+            # 지정된 타입만 활성화
+            for aug_type in aug_types:
+                builder.enable_augmentation_type(aug_type, True)
+                logger.info(f"증강 타입 활성화: {aug_type}")
+    else:
+        builder.enable_augmentation(False)
+    
+    # 상태 출력
+    status = builder.get_augmentation_status()
+    logger.info(f"증강 상태: {status}")
+    
+    # 메타데이터 경로
+    metadata_path = project_root / 'data' / 'watermelon_metadata.csv'
+    
+    # 데이터셋 구축
+    build_result = builder.build_dataset(
+        metadata_path=metadata_path,
+        output_dir=output_dir,
+        batch_size=batch_size,
+        apply_augmentation=enable_augmentation
+    )
+    
+    return build_result
+
+
 def build_full_dataset():
-    """전체 데이터셋 구축"""
+    """전체 데이터셋 구축 (기존 방식)"""
     logger.info("=== 전체 데이터셋 구축 시작 ===")
     
     # 메타데이터 분석
@@ -68,26 +146,6 @@ def build_full_dataset():
     config_path = project_root / 'configs' / 'preprocessing.yaml'
     builder = DatasetBuilder(config_path=config_path)
     
-    # 데이터 루트 경로
-    data_root = project_root / 'data' / 'raw'
-    
-    # 메타데이터에서 파일 경로 추출
-    file_paths = []
-    sweetness_values = []
-    
-    for _, row in metadata_df.iterrows():
-        file_path = project_root / row['file_path']
-        if file_path.exists():
-            file_paths.append(file_path)
-            sweetness_values.append(row['sweetness'])
-        else:
-            logger.warning(f"파일이 존재하지 않습니다: {file_path}")
-    
-    logger.info(f"처리할 파일 수: {len(file_paths)}개")
-    
-    # 특징 추출 실행
-    start_time = time.time()
-    
     # 메타데이터 파일 경로
     metadata_path = project_root / 'data' / 'watermelon_metadata.csv'
     output_dir = project_root / 'data' / 'processed' / 'full_dataset'
@@ -98,155 +156,121 @@ def build_full_dataset():
         batch_size=10
     )
     
-    end_time = time.time()
-    processing_time = end_time - start_time
-    
-    if build_result and build_result['processed_files'] > 0:
-        logger.info(f"특징 추출 완료!")
-        logger.info(f"총 처리 시간: {processing_time:.1f}초")
-        logger.info(f"평균 파일당 처리 시간: {build_result['avg_processing_time']:.3f}초")
-        logger.info(f"데이터셋 크기: {build_result['feature_shape']}")
-        logger.info(f"특징 개수: {build_result['feature_shape'][1] - 1}")  # -1 for sweetness column
-        
-        # 통계 확인
-        logger.info(f"DatasetBuilder 결과: {build_result}")
-        
-        return True
-    else:
-        logger.error("특징 추출 실패!")
-        return False
+    return build_result
 
 
 def split_dataset():
     """데이터셋 분할"""
     logger.info("=== 데이터셋 분할 시작 ===")
     
-    # 구축된 특징 데이터 로드
+    # 분할할 데이터셋 경로
     features_path = project_root / 'data' / 'processed' / 'full_dataset' / 'features.csv'
-    if not features_path.exists():
-        logger.error(f"특징 데이터 파일이 없습니다: {features_path}")
-        return False
+    labels_path = project_root / 'data' / 'processed' / 'full_dataset' / 'labels.csv'
     
-    features_df = pd.read_csv(features_path)
-    logger.info(f"특징 데이터 로드: {features_df.shape}")
+    if not features_path.exists() or not labels_path.exists():
+        logger.error("분할할 데이터셋이 없습니다. 먼저 데이터셋을 구축하세요.")
+        return False
     
     # DataSplitter 초기화
-    splitter = DataSplitter(train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, random_state=42)
+    splitter = DataSplitter()
     
-    # 데이터 분할 실행
-    split_data = splitter.split_dataset(
-        features_df=features_df,
-        target_column='sweetness',
-        stratify_bins=5
+    # 분할 실행
+    split_result = splitter.split_dataset(
+        features_path=features_path,
+        labels_path=labels_path,
+        output_dir=project_root / 'data' / 'splits',
+        test_size=0.2,
+        val_size=0.2,
+        random_state=42
     )
     
-    # 분할된 데이터 저장
-    output_dir = project_root / 'data' / 'splits' / 'full_dataset'
-    saved_files = splitter.save_splits(split_data, output_dir)
-    
-    # 분할 검증
-    validation_result = splitter.validate_split(split_data, target_column='sweetness')
-    
-    split_result = True
-    
-    if split_result:
-        logger.info("데이터 분할 완료!")
-        
-        # 분할 통계 확인
-        split_stats = splitter.get_stats()
-        logger.info(f"DataSplitter 통계: {split_stats}")
-        
-        return True
-    else:
-        logger.error("데이터 분할 실패!")
-        return False
+    return split_result
 
 
 def verify_dataset():
     """데이터셋 검증"""
     logger.info("=== 데이터셋 검증 시작 ===")
     
-    splits_dir = project_root / 'data' / 'splits' / 'full_dataset'
-    
-    split_files = {
-        'train': splits_dir / 'train.csv',
-        'val': splits_dir / 'val.csv',
-        'test': splits_dir / 'test.csv'
-    }
-    
-    total_samples = 0
-    for split_name, file_path in split_files.items():
-        if file_path.exists():
-            split_df = pd.read_csv(file_path)
-            logger.info(f"{split_name.upper()} 세트: {split_df.shape[0]}개 샘플")
-            logger.info(f"  당도 범위: {split_df['sweetness'].min():.1f} ~ {split_df['sweetness'].max():.1f}")
-            logger.info(f"  평균 당도: {split_df['sweetness'].mean():.2f} ± {split_df['sweetness'].std():.2f}")
-            total_samples += split_df.shape[0]
-        else:
-            logger.warning(f"{split_name} 파일이 없습니다: {file_path}")
-    
-    logger.info(f"총 샘플 수: {total_samples}개")
-    
-    # 특징 품질 확인
+    # 검증할 데이터셋 경로
     features_path = project_root / 'data' / 'processed' / 'full_dataset' / 'features.csv'
-    if features_path.exists():
-        features_df = pd.read_csv(features_path)
-        
-        # NaN/Inf 값 확인
-        nan_count = features_df.isnull().sum().sum()
-        inf_count = np.isinf(features_df.select_dtypes(include=[np.number])).sum().sum()
-        
-        logger.info(f"데이터 품질 확인:")
-        logger.info(f"  NaN 값: {nan_count}개")
-        logger.info(f"  Inf 값: {inf_count}개")
-        
-        if nan_count == 0 and inf_count == 0:
-            logger.info("✅ 데이터 품질: 우수")
-        else:
-            logger.warning("⚠️ 데이터 품질: 문제 발견")
     
-    return True
+    if not features_path.exists():
+        logger.error("검증할 데이터셋이 없습니다.")
+        return False
+    
+    # DatasetBuilder 초기화
+    config_path = project_root / 'configs' / 'preprocessing.yaml'
+    builder = DatasetBuilder(config_path=config_path)
+    
+    # 검증 실행
+    validation_result = builder.validate_dataset(features_path)
+    
+    logger.info("검증 결과:")
+    for key, value in validation_result.items():
+        logger.info(f"  {key}: {value}")
+    
+    return validation_result
 
 
 def main():
     """메인 함수"""
-    logger.info("🍉 수박 당도 예측 데이터셋 구축 시작")
-    logger.info("=" * 60)
+    args = parse_arguments()
     
-    try:
-        # 1. 전체 데이터셋 구축
-        if not build_full_dataset():
-            logger.error("데이터셋 구축 실패")
-            return False
-        
-        # 2. 데이터셋 분할
-        if not split_dataset():
-            logger.error("데이터셋 분할 실패")
-            return False
-        
-        # 3. 데이터셋 검증
-        if not verify_dataset():
-            logger.error("데이터셋 검증 실패")
-            return False
-        
-        logger.info("=" * 60)
-        logger.info("🎉 데이터셋 구축이 성공적으로 완료되었습니다!")
-        logger.info("=" * 60)
-        
-        # 결과 요약
-        logger.info("📊 구축 결과 요약:")
-        logger.info(f"  • 특징 데이터: data/processed/full_dataset/features.csv")
-        logger.info(f"  • 훈련 세트: data/splits/full_dataset/train.csv")
-        logger.info(f"  • 검증 세트: data/splits/full_dataset/val.csv")
-        logger.info(f"  • 테스트 세트: data/splits/full_dataset/test.csv")
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"데이터셋 구축 중 오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
+    logger.info(f"명령줄 인자: 증강={args.augmentation}, 배수={args.multiplier}, 타입={args.aug_types}")
+    
+    # 1. 메타데이터 분석
+    metadata_df = analyze_metadata()
+    if metadata_df is None:
+        logger.error("메타데이터 분석 실패")
         return False
+    
+    # 2. 데이터셋 구축 (증강 옵션 포함)
+    build_result = build_dataset_with_options(
+        enable_augmentation=args.augmentation,
+        multiplier=args.multiplier,
+        aug_types=args.aug_types,
+        output_dir=args.output_dir,
+        batch_size=args.batch_size
+    )
+    
+    if not build_result or not build_result.get('success', False):
+        logger.error("데이터셋 구축 실패")
+        return False
+    
+    # 3. 결과 출력
+    logger.info("=== 데이터셋 구축 결과 ===")
+    logger.info(f"성공: {build_result['success']}")
+    logger.info(f"특징 형태: {build_result['features_shape']}")
+    logger.info(f"라벨 형태: {build_result['labels_shape']}")
+    logger.info(f"처리된 파일: {build_result['files_processed']}")
+    logger.info(f"실패한 파일: {build_result['files_failed']}")
+    logger.info(f"총 처리 시간: {build_result['total_processing_time']:.2f}초")
+    
+    if args.augmentation:
+        aug_stats = build_result.get('augmentation_stats', {})
+        logger.info(f"증강 활성화: {aug_stats.get('enabled', False)}")
+        logger.info(f"증강된 샘플: {aug_stats.get('augmented_samples', 0)}")
+        logger.info(f"사용된 증강 타입: {aug_stats.get('types_used', {})}")
+    
+    # 4. 데이터셋 분할 (선택사항)
+    if not args.augmentation:  # 원본 데이터셋만 분할
+        logger.info("\n=== 데이터셋 분할 시작 ===")
+        split_result = split_dataset()
+        if split_result:
+            logger.info("데이터셋 분할 완료")
+        else:
+            logger.warning("데이터셋 분할 실패")
+    
+    # 5. 데이터셋 검증
+    logger.info("\n=== 데이터셋 검증 시작 ===")
+    validation_result = verify_dataset()
+    if validation_result:
+        logger.info("데이터셋 검증 완료")
+    else:
+        logger.warning("데이터셋 검증 실패")
+    
+    logger.info("=== 모든 작업 완료 ===")
+    return True
 
 
 if __name__ == "__main__":

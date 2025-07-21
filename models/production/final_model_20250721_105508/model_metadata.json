@@ -4,7 +4,7 @@
     "version": "1.0.0",
     "type": "RandomForest",
     "algorithm": "Progressive Feature Selection + Random Forest",
-    "creation_date": "2025-07-15T10:35:44.496140",
+    "creation_date": "2025-07-21T10:55:08.582978",
     "author": "Watermelon ML Project Team"
   },
   "data_info": {
